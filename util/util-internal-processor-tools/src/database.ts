@@ -1,12 +1,46 @@
 /**
  * Database is responsible for providing a persistent storage for data handlers
  * and keeping the processor progress and status.
- *
- * This interface should be considered by framework users to be completely opaque,
- * as its details were not yet stabilized and are expected to change.
  */
-export interface Database<S> {
+export type Database<S> = FinalDatabase<S> | HotDatabase<S>
+
+
+export interface FinalDatabase<S> {
+    supportsHotBlocks?: false
+
     connect(): Promise<number>
-    transact(from: number, to: number, cb: (store: S) => Promise<void>): Promise<void>
-    advance(height: number, isHead: boolean): Promise<void>
+
+    transact(
+        info: {from: number, to: number, isHead: boolean},
+        cb: (store: S) => Promise<void>
+    ): Promise<void>
+}
+
+
+export interface HotDatabase<S> {
+    supportsHotBlocks: true
+
+    connect(): Promise<HotDatabaseState>
+
+    transact(
+        info: {from: number, to: number, isHead: boolean},
+        cb: (store: S) => Promise<void>
+    ): Promise<void>
+
+    transactHead<B extends {header: HashAndHeight}>(
+        info: {blocks: B[], finalizedTop: HashAndHeight},
+        cb: (store: S, block: B) => Promise<void>
+    ): Promise<void>
+}
+
+
+export interface HashAndHeight {
+    height: number
+    hash: string
+}
+
+
+export interface HotDatabaseState {
+    finalizedHeight: number
+    head: HashAndHeight[]
 }

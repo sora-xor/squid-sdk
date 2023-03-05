@@ -1,6 +1,6 @@
 export {BatchRequest, mergeBatchRequests, applyRangeBound} from './batch'
 export * from './database'
-export {BatchResponse, DataSource} from './ingest'
+export {BatchResponse, ArchiveDataSource} from './ingest'
 export * from './metrics'
 export * from './range'
 export * from './runner'

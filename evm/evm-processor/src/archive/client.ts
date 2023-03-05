@@ -1,16 +1,16 @@
 import {addErrorContext, maybeLast, withErrorContext} from '@subsquid/util-internal'
 import {HttpClient} from '@subsquid/util-internal-http-client'
-import {BatchRequest, BatchResponse, DataSource} from '@subsquid/util-internal-processor-tools'
+import {BatchRequest, BatchResponse, ArchiveDataSource} from '@subsquid/util-internal-processor-tools'
 import assert from 'assert'
 import {BlockItem, DataRequest, DEFAULT_FIELDS, Fields, FullBlockData, FullLogItem} from '../interfaces/data'
 import {EvmBlock, EvmLog, EvmTransaction} from '../interfaces/evm'
 import * as gw from './gateway'
 
 
-export class ArchiveDataSource implements DataSource<DataRequest, FullBlockData> {
+export class ArchiveDataSource implements ArchiveDataSource<DataRequest, FullBlockData> {
     constructor(private http: HttpClient) {}
 
-    async batchRequest(request: BatchRequest<DataRequest>): Promise<BatchResponse<FullBlockData>> {
+    async getFinalizedBatch(request: BatchRequest<DataRequest>): Promise<BatchResponse<FullBlockData>> {
         let q: gw.BatchRequest = {
             fromBlock: request.range.from,
             toBlock: request.range.to,
@@ -95,7 +95,7 @@ export class ArchiveDataSource implements DataSource<DataRequest, FullBlockData>
         return this.http.post('/query', {json: q}).catch(withErrorContext({archiveQuery: q}))
     }
 
-    async getChainHeight(): Promise<number> {
+    async getFinalizedHeight(): Promise<number> {
         let {height}: {height: number} = await this.http.get('/height')
         return height
     }

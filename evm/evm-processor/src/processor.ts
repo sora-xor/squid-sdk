@@ -297,8 +297,8 @@ export class EvmBatchProcessor<F extends Fields = {}> {
             let runner = new Runner({
                 database,
                 requests: this.getBatchRequests(),
-                src: this.getArchiveDataSource(),
-                srcPollInterval: 2000,
+                archive: this.getArchiveDataSource(),
+                archivePollInterval: 2000,
                 metrics: this.getMetrics(),
                 prometheusPort: this.prometheusPort || 0,
                 log
