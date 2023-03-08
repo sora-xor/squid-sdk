@@ -1,5 +1,5 @@
 import {createLogger, Logger} from '@subsquid/logger'
-import {def, runProgram} from '@subsquid/util-internal'
+import {assertNotNull, def, runProgram} from '@subsquid/util-internal'
 import {HttpClient} from '@subsquid/util-internal-http-client'
 import {HttpAgent} from '@subsquid/util-internal-http-client/lib/agent'
 import {
@@ -14,11 +14,15 @@ import {
 } from '@subsquid/util-internal-processor-tools'
 import {RpcClient} from '@subsquid/util-internal-resilient-rpc'
 import {EvmArchive} from './ds-archive/client'
+import {EvmRpcDataSource} from './ds-rpc/client'
 import {Chain} from './interfaces/chain'
 import {BlockData, DataRequest, EvmTopicSet, Fields} from './interfaces/data'
 
 
-export interface DataSource {
+export type DataSource = ArchiveDataSource | ChainDataSource
+
+
+interface ArchiveDataSource {
     /**
      * Subsquid substrate archive endpoint URL
      */
@@ -27,6 +31,15 @@ export interface DataSource {
      * Chain node RPC endpoint URL
      */
     chain?: string
+}
+
+
+interface ChainDataSource {
+    /**
+     * Chain node RPC endpoint URL
+     */
+    chain: string
+    archive?: undefined
 }
 
 
@@ -203,16 +216,15 @@ export class EvmBatchProcessor<F extends Fields = {}> {
         return new Metrics()
     }
 
-    private getArchiveEndpoint(): string {
-        let url = this.src?.archive
-        if (url == null) {
-            throw new Error('use .setDataSource() to specify archive url')
+    private getDataSource(): DataSource {
+        if (this.src == null) {
+            throw new Error('use .setDataSource() to specify archive and/or chain RPC endpoint')
         }
-        return url
+        return this.src
     }
 
     @def
-    private getChainClient(): RpcClient {
+    private getChainRpcClient(): RpcClient {
         let url = this.src?.chain
         if (url == null) {
             throw new Error(`use .setDataSource() to specify chain RPC endpoint`)
@@ -232,15 +244,22 @@ export class EvmBatchProcessor<F extends Fields = {}> {
         let self = this
         return {
             get client() {
-                return self.getChainClient()
+                return self.getChainRpcClient()
             }
         }
     }
 
     @def
+    private getHotDataSource(): EvmRpcDataSource {
+        return new EvmRpcDataSource({
+            rpc: this.getChainRpcClient()
+        })
+    }
+
+    @def
     private getArchiveDataSource(): EvmArchive {
         let http = new HttpClient({
-            baseUrl: this.getArchiveEndpoint(),
+            baseUrl: assertNotNull(this.getDataSource().archive),
             headers: {
                 'x-squid-id': this.getSquidId()
             },
@@ -294,11 +313,14 @@ export class EvmBatchProcessor<F extends Fields = {}> {
         let log = this.getLogger()
 
         runProgram(async () => {
+            let src = this.getDataSource()
+
             let runner = new Runner({
                 database,
                 requests: this.getBatchRequests(),
-                archive: this.getArchiveDataSource(),
+                archive: src.archive ? this.getArchiveDataSource() : undefined,
                 archivePollInterval: 2000,
+                hotDataSource: src.chain ? this.getHotDataSource() : undefined,
                 metrics: this.getMetrics(),
                 prometheusPort: this.prometheusPort || 0,
                 log
@@ -309,7 +331,7 @@ export class EvmBatchProcessor<F extends Fields = {}> {
             runner.processBatch = function(store, batch) {
                 return handler({
                     _chain: chain,
-                    log: log.child('mapping', {batchRange: batch.range}),
+                    log: log.child('mapping', {batchFirstBlock: batch.range.from, batchLastBlock: batch.range.to}),
                     store,
                     blocks: batch.blocks as any,
                     isHead: batch.range.to === batch.chainHeight

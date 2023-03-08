@@ -51,7 +51,7 @@ export interface ArchiveDataSource<R, B> {
 }
 
 
-export interface ChainDataSource<R, B> extends ArchiveDataSource<R, B> {
+export interface HotDataSource<R, B> extends ArchiveDataSource<R, B> {
     getBlock(blockHash: string, request?: R): Promise<B>
     getBlockHash(height: number): Promise<string>
     getBestHead(): Promise<HashAndHeight>
@@ -171,7 +171,7 @@ export class ArchiveIngest<R, B extends BaseBlock> {
 
 
 export interface HotIngestOptions<R, B> {
-    src: ChainDataSource<R, B>
+    src: HotDataSource<R, B>
     finalizedTop: HashAndHeight
     head: HashAndHeight[]
     requests: BatchRequest<R>[]
@@ -183,7 +183,7 @@ export class HotIngest<R, B extends BaseBlock> {
     private requests: BatchRequest<R>[]
     private finalizedTop: HashAndHeight
     private head: HashAndHeight[]
-    private src: ChainDataSource<R, B>
+    private src: HotDataSource<R, B>
     private pollInterval: number
 
     constructor(options: HotIngestOptions<R, B>) {

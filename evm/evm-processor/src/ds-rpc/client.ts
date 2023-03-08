@@ -1,5 +1,5 @@
 import {addErrorContext, assertNotNull, groupBy} from '@subsquid/util-internal'
-import {BatchRequest, BatchResponse, ChainDataSource, HashAndHeight} from '@subsquid/util-internal-processor-tools'
+import {BatchRequest, BatchResponse, HotDataSource, HashAndHeight} from '@subsquid/util-internal-processor-tools'
 import {RpcClient} from '@subsquid/util-internal-resilient-rpc'
 import assert from 'assert'
 import {DataRequest, FullBlockData} from '../interfaces/data'
@@ -15,7 +15,7 @@ export interface EvmRpcDataSourceOptions {
 }
 
 
-export class EvmRpcDataSource implements ChainDataSource<DataRequest, FullBlockData> {
+export class EvmRpcDataSource implements HotDataSource<DataRequest, FullBlockData> {
     private rpc: RpcClient
     private batchSize: number
     private finalityConfirmation: number

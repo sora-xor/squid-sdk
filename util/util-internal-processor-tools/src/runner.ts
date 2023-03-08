@@ -8,7 +8,7 @@ import {
     ArchiveIngest,
     BaseBlock,
     BatchResponse,
-    ChainDataSource,
+    HotDataSource,
     DataBatch,
     HotIngest
 } from './ingest'
@@ -20,8 +20,8 @@ import {getItemsCount, timeInterval} from './util'
 export interface RunnerConfig<R, B, S> {
     archive?: ArchiveDataSource<R, B>
     archivePollInterval?: number
-    chain?: ChainDataSource<R, B>
-    chainPollInterval?: number
+    hotDataSource?: HotDataSource<R, B>
+    hotDataSourcePollInterval?: number
     requests: BatchRequest<R>[]
     database: Database<S>
     log: Logger
@@ -58,19 +58,19 @@ export class Runner<R, B extends BaseBlock, S> {
         log.info(`prometheus metrics are served at port ${prometheusServer.port}`)
 
         const archive = this.config.archive
-        const chain = this.config.chain
+        const hot = this.config.hotDataSource
 
         if (archive) {
             let archiveHeight = await archive.getFinalizedHeight()
-            if (archiveHeight > state.finalizedHeight + state.head.length || chain == null) {
+            if (archiveHeight > state.finalizedHeight + state.head.length || hot == null) {
                 requests = await this.processFinalizedBlocks({
                     src: archive,
                     srcHeight: archiveHeight,
                     srcPollInterval: this.config.archivePollInterval,
                     requests,
                     minimumCommitHeight: state.finalizedHeight + state.head.length,
-                    shouldStopOnHeight: chain && (async height => {
-                        let h = await chain.getFinalizedHeight()
+                    shouldStopOnHeight: hot && (async height => {
+                        let h = await hot.getFinalizedHeight()
                         return h > height && h - height < 10000
                     })
                 })
@@ -79,14 +79,14 @@ export class Runner<R, B extends BaseBlock, S> {
             }
         }
 
-        assert(chain)
+        assert(hot)
 
-        let chainFinalizedHeight = await chain.getFinalizedHeight()
+        let chainFinalizedHeight = await hot.getFinalizedHeight()
         if (chainFinalizedHeight > state.finalizedHeight + state.head.length) {
             requests = await this.processFinalizedBlocks({
-                src: chain,
+                src: hot,
                 srcHeight: chainFinalizedHeight,
-                srcPollInterval: this.config.chainPollInterval,
+                srcPollInterval: this.config.hotDataSourcePollInterval,
                 requests,
                 minimumCommitHeight: state.finalizedHeight + state.head.length,
                 shouldStopOnHeight: async height => !!this.config.database.supportsHotBlocks
@@ -154,7 +154,7 @@ export class Runner<R, B extends BaseBlock, S> {
         this.setChainHeight(finalizedHeight + head.length)
         this.updateProgress()
 
-        let src = assertNotNull(this.config.chain)
+        let src = assertNotNull(this.config.hotDataSource)
 
         assert(finalizedHeight > 0)
 
@@ -168,7 +168,7 @@ export class Runner<R, B extends BaseBlock, S> {
             finalizedTop,
             head,
             requests,
-            pollInterval: this.config.chainPollInterval
+            pollInterval: this.config.hotDataSourcePollInterval
         })
 
         for await (let batch of ingest.getItems()) {
