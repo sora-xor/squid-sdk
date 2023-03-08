@@ -13,7 +13,7 @@ import {
     Runner
 } from '@subsquid/util-internal-processor-tools'
 import {RpcClient} from '@subsquid/util-internal-resilient-rpc'
-import {ArchiveDataSource} from './archive/client'
+import {EvmArchive} from './ds-archive/client'
 import {Chain} from './interfaces/chain'
 import {BlockData, DataRequest, EvmTopicSet, Fields} from './interfaces/data'
 
@@ -238,7 +238,7 @@ export class EvmBatchProcessor<F extends Fields = {}> {
     }
 
     @def
-    private getArchiveDataSource(): ArchiveDataSource {
+    private getArchiveDataSource(): EvmArchive {
         let http = new HttpClient({
             baseUrl: this.getArchiveEndpoint(),
             headers: {
@@ -252,7 +252,7 @@ export class EvmBatchProcessor<F extends Fields = {}> {
             log: this.getLogger().child('archive')
         })
 
-        return new ArchiveDataSource(http)
+        return new EvmArchive(http)
     }
 
     @def
@@ -312,7 +312,7 @@ export class EvmBatchProcessor<F extends Fields = {}> {
                     log: log.child('mapping', {batchRange: batch.range}),
                     store,
                     blocks: batch.blocks as any,
-                    isHead: batch.isHead
+                    isHead: batch.range.to === batch.chainHeight
                 })
             }
 

@@ -36,7 +36,6 @@ export interface BatchResponse<B> {
 export interface DataBatch<B> extends BatchResponse<B> {
     fetchStartTime: bigint
     fetchEndTime: bigint
-    itemsCount: number
     finalizedTop?: HashAndHeight
 }
 
@@ -151,8 +150,7 @@ export class ArchiveIngest<R, B extends BaseBlock> {
                 ...response,
                 fetchStartTime,
                 fetchEndTime,
-                chainHeight: this.chainHeight,
-                itemsCount: getItemsCount(response.blocks)
+                chainHeight: this.chainHeight
             }
         })
 
@@ -169,15 +167,6 @@ export class ArchiveIngest<R, B extends BaseBlock> {
         }
         return true
     }
-}
-
-
-function getItemsCount(blocks: BaseBlock[]): number {
-    let count = 0
-    for (let i = 0; i < blocks.length; i++) {
-        count += blocks[i].items.length
-    }
-    return count
 }
 
 
@@ -287,7 +276,6 @@ export class HotIngest<R, B extends BaseBlock> {
                     range: {from: chain[0].header.height, to: last(chain).header.height},
                     blocks: chain,
                     chainHeight: last(chain).header.height,
-                    itemsCount: getItemsCount(chain),
                     fetchStartTime,
                     fetchEndTime,
                     finalizedTop

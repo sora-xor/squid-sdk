@@ -26,3 +26,12 @@ export function timeInterval(seconds: number): string {
     minutes = minutes - hours * 60
     return hours + 'h ' + minutes + 'm'
 }
+
+
+export function getItemsCount(blocks: {items: unknown[]}[]): number {
+    let count = 0
+    for (let i = 0; i < blocks.length; i++) {
+        count += blocks[i].items.length
+    }
+    return count
+}

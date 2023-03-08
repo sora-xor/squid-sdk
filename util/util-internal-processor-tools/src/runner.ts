@@ -14,7 +14,7 @@ import {
 } from './ingest'
 import {Metrics} from './metrics'
 import {rangeEnd} from './range'
-import {timeInterval} from './util'
+import {getItemsCount, timeInterval} from './util'
 
 
 export interface RunnerConfig<R, B, S> {
@@ -127,7 +127,6 @@ export class Runner<R, B extends BaseBlock, S> {
                     range: {from: prevBatch.range.from, to: batch.range.to},
                     chainHeight: batch.chainHeight,
                     blocks: prevBatch.blocks.concat(batch.blocks),
-                    itemsCount: prevBatch.itemsCount + batch.itemsCount,
                     fetchStartTime: prevBatch.fetchStartTime,
                     fetchEndTime: batch.fetchEndTime
                 }
@@ -189,7 +188,6 @@ export class Runner<R, B extends BaseBlock, S> {
     private async handleBatch(batch: DataBatch<B>): Promise<void> {
         this.setChainHeight(batch.chainHeight)
 
-        let lastBlock = batch.range.to
         let mappingStartTime = process.hrtime.bigint()
 
         if (batch.finalizedTop) {
@@ -214,11 +212,11 @@ export class Runner<R, B extends BaseBlock, S> {
 
         let mappingEndTime = process.hrtime.bigint()
 
-        this.setLastProcessedBlock(lastBlock)
+        this.setLastProcessedBlock(batch.range.to)
         this.updateProgress(mappingEndTime)
         this.config.metrics.registerBatch(
             batch.blocks.length,
-            batch.itemsCount,
+            getItemsCount(batch.blocks),
             batch.fetchStartTime,
             batch.fetchEndTime,
             mappingStartTime,
@@ -286,3 +284,4 @@ export class Runner<R, B extends BaseBlock, S> {
         this.config.log.info(msg)
     }
 }
+

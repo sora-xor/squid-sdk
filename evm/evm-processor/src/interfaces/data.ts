@@ -44,8 +44,7 @@ export const DEFAULT_FIELDS = {
         to: true,
         input: true,
         hash: true,
-        nonce: true,
-        type: true
+        nonce: true
     }
 } as const
 

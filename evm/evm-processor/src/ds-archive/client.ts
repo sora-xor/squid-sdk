@@ -1,13 +1,14 @@
 import {addErrorContext, maybeLast, withErrorContext} from '@subsquid/util-internal'
 import {HttpClient} from '@subsquid/util-internal-http-client'
-import {BatchRequest, BatchResponse, ArchiveDataSource} from '@subsquid/util-internal-processor-tools'
+import {ArchiveDataSource, BatchRequest, BatchResponse} from '@subsquid/util-internal-processor-tools'
 import assert from 'assert'
-import {BlockItem, DataRequest, DEFAULT_FIELDS, Fields, FullBlockData, FullLogItem} from '../interfaces/data'
+import {DataRequest, DEFAULT_FIELDS, Fields, FullBlockData, FullLogItem} from '../interfaces/data'
 import {EvmBlock, EvmLog, EvmTransaction} from '../interfaces/evm'
+import {formatId, blockItemOrder} from '../util'
 import * as gw from './gateway'
 
 
-export class ArchiveDataSource implements ArchiveDataSource<DataRequest, FullBlockData> {
+export class EvmArchive implements ArchiveDataSource<DataRequest, FullBlockData> {
     constructor(private http: HttpClient) {}
 
     async getFinalizedBatch(request: BatchRequest<DataRequest>): Promise<BatchResponse<FullBlockData>> {
@@ -47,8 +48,7 @@ export class ArchiveDataSource implements ArchiveDataSource<DataRequest, FullBlo
         let batch: BatchResponse<FullBlockData> = {
             range: {from: request.range.from, to: lastBlock},
             blocks: [],
-            chainHeight: res.archiveHeight,
-            isHead: res.archiveHeight === lastBlock
+            chainHeight: res.archiveHeight
         }
 
         for (let bb of res.data) {
@@ -61,11 +61,11 @@ export class ArchiveDataSource implements ArchiveDataSource<DataRequest, FullBlo
 
         batch.blocks.sort((a, b) => a.header.height - b.header.height)
 
-        if (batch.isHead && maybeLast(batch.blocks)?.header.height !== lastBlock) {
+        if (batch.range.to === batch.chainHeight && maybeLast(batch.blocks)?.header.height !== batch.chainHeight) {
             // When we are on the head, always include the head block,
             // even if it doesn't contain requested data.
-            let lastBlockHeader = await this.fetchBlockHeader(lastBlock, fieldSelection)
-                .catch(withErrorContext({blockHeight: lastBlock}))
+            let lastBlockHeader = await this.fetchBlockHeader(batch.chainHeight, fieldSelection)
+                .catch(withErrorContext({blockHeight: batch.chainHeight}))
 
             batch.blocks.push({
                 header: lastBlockHeader,
@@ -136,24 +136,9 @@ function mapGatewayBlock(src: gw.BlockData): FullBlockData {
         items.push(item as FullLogItem)
     }
 
-    items.sort(itemOrder)
+    items.sort(blockItemOrder)
 
     return {header, items}
-}
-
-
-function itemOrder(a: BlockItem, b: BlockItem): number {
-    if (a.kind == 'log' && b.kind == 'log') {
-        return a.log.index - b.log.index
-    } else if (a.kind == 'transaction' && b.kind == 'transaction') {
-        return a.transaction.index - b.transaction.index
-    } else if (a.kind == 'log' && b.kind == 'transaction') {
-        return a.log.transactionIndex - b.transaction.index || -1 // transaction after logs
-    } else if (a.kind == 'transaction' && b.kind == 'log') {
-        return a.transaction.index - b.log.transactionIndex || 1
-    } else {
-        assert(false)
-    }
 }
 
 
@@ -217,7 +202,6 @@ function mapGatewayTransaction(blockHeight: number, blockHash: string, src: gw.T
                 tx[key] = BigInt(src[key]!)
                 break
             case 'index':
-            case 'type':
             case 'chainId':
             case 'yParity':
                 tx[key] = src[key]
@@ -294,27 +278,4 @@ function mergeDefaultFields<P extends string>(defaults: Selector<P>, selection?:
         }
     }
     return result
-}
-
-
-/**
- * Formats the event id into a fixed-length string. When formatted the natural string ordering
- * is the same as the ordering
- * in the blockchain (first ordered by block height, then by block ID)
- *
- * @return  id in the format 000000..00<blockNum>-000<index>-<shorthash>
- *
- */
-export function formatId(height: number, hash: string, index?: number): string {
-    const blockPart = `${String(height).padStart(10, "0")}`
-    const indexPart =
-        index !== undefined
-            ? `-${String(index).padStart(6, "0")}`
-            : ""
-    const _hash = hash.startsWith("0x") ? hash.substring(2) : hash
-    const shortHash =
-        _hash.length < 5
-            ? _hash.padEnd(5, "0")
-            : _hash.slice(0, 5)
-    return `${blockPart}${indexPart}-${shortHash}`
 }
