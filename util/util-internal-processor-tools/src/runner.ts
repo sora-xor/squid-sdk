@@ -40,12 +40,12 @@ export class Runner<R, B extends BaseBlock, S> {
         let log = this.config.log
 
         let state = await this.getDatabaseState()
-        if (state.finalizedHeight >= 0) {
-            log.info(`last processed final block was ${state.finalizedHeight}`)
-            this.setLastProcessedBlock(state.finalizedHeight)
+        if (state.height >= 0) {
+            log.info(`last processed final block was ${state.height}`)
+            this.setLastProcessedBlock(state.height)
         }
 
-        let requests = applyRangeBound(this.config.requests, {from: state.finalizedHeight + 1})
+        let requests = applyRangeBound(this.config.requests, {from: state.height + 1})
         if (requests.length == 0) {
             this.printProcessingRange()
             log.info('nothing to do')
@@ -62,40 +62,40 @@ export class Runner<R, B extends BaseBlock, S> {
 
         if (archive) {
             let archiveHeight = await archive.getFinalizedHeight()
-            if (archiveHeight > state.finalizedHeight + state.head.length || hot == null) {
+            if (archiveHeight > state.height + state.top.length || hot == null) {
                 requests = await this.processFinalizedBlocks({
                     src: archive,
                     srcHeight: archiveHeight,
                     srcPollInterval: this.config.archivePollInterval,
                     requests,
-                    minimumCommitHeight: state.finalizedHeight + state.head.length,
+                    minimumCommitHeight: state.height + state.top.length,
                     shouldStopOnHeight: hot && (async height => {
                         let h = await hot.getFinalizedHeight()
                         return h > height && h - height < 10000
                     })
                 })
                 if (requests.length == 0) return
-                state = {finalizedHeight: requests[0].range.from - 1, head: []}
+                state = {height: requests[0].range.from - 1, top: []}
             }
         }
 
         assert(hot)
 
         let chainFinalizedHeight = await hot.getFinalizedHeight()
-        if (chainFinalizedHeight > state.finalizedHeight + state.head.length) {
+        if (chainFinalizedHeight > state.height + state.top.length) {
             requests = await this.processFinalizedBlocks({
                 src: hot,
                 srcHeight: chainFinalizedHeight,
                 srcPollInterval: this.config.hotDataSourcePollInterval,
                 requests,
-                minimumCommitHeight: state.finalizedHeight + state.head.length,
+                minimumCommitHeight: state.height + state.top.length,
                 shouldStopOnHeight: async height => !!this.config.database.supportsHotBlocks
             })
             if (requests.length == 0) return
-            state = {finalizedHeight: requests[0].range.from - 1, head: []}
+            state = {height: requests[0].range.from - 1, top: []}
         }
 
-        return this.processHotBlocks(requests, state.finalizedHeight, state.head)
+        return this.processHotBlocks(requests, state.height, state.top)
     }
 
     private async processFinalizedBlocks(options: {
@@ -165,8 +165,8 @@ export class Runner<R, B extends BaseBlock, S> {
 
         let ingest = new HotIngest({
             src,
-            finalizedTop,
-            head,
+            finalizedHead: finalizedTop,
+            top: head,
             requests,
             pollInterval: this.config.hotDataSourcePollInterval
         })
@@ -176,12 +176,13 @@ export class Runner<R, B extends BaseBlock, S> {
         }
     }
 
-    private async getDatabaseState(): Promise<HotDatabaseState> {
+    private getDatabaseState(): Promise<HotDatabaseState> {
         if (this.config.database.supportsHotBlocks) {
             return this.config.database.connect()
         } else {
-            let height = await this.config.database.connect()
-            return {finalizedHeight: height, head: []}
+            return this.config.database.connect().then(({height}) => {
+                return {height, top: []}
+            })
         }
     }
 
@@ -190,10 +191,10 @@ export class Runner<R, B extends BaseBlock, S> {
 
         let mappingStartTime = process.hrtime.bigint()
 
-        if (batch.finalizedTop) {
+        if (batch.finalizedHead) {
             assert(this.config.database.supportsHotBlocks)
-            await this.config.database.transactHead({
-                finalizedTop: batch.finalizedTop,
+            await this.config.database.transactHot({
+                finalizedHead: batch.finalizedHead,
                 blocks: batch.blocks
             }, (store, block) => {
                 return this.processBatch(store, {

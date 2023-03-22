@@ -8,7 +8,7 @@ export type Database<S> = FinalDatabase<S> | HotDatabase<S>
 export interface FinalDatabase<S> {
     supportsHotBlocks?: false
 
-    connect(): Promise<number>
+    connect(): Promise<{height: number}>
 
     transact(
         info: {from: number, to: number, isHead: boolean},
@@ -27,8 +27,8 @@ export interface HotDatabase<S> {
         cb: (store: S) => Promise<void>
     ): Promise<void>
 
-    transactHead<B extends {header: HashAndHeight}>(
-        info: {blocks: B[], finalizedTop: HashAndHeight},
+    transactHot<B extends {header: HashAndHeight}>(
+        info: {blocks: B[], finalizedHead: HashAndHeight},
         cb: (store: S, block: B) => Promise<void>
     ): Promise<void>
 }
@@ -41,6 +41,6 @@ export interface HashAndHeight {
 
 
 export interface HotDatabaseState {
-    finalizedHeight: number
-    head: HashAndHeight[]
+    height: number
+    top: HashAndHeight[]
 }

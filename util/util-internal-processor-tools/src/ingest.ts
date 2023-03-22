@@ -36,12 +36,12 @@ export interface BatchResponse<B> {
 export interface DataBatch<B> extends BatchResponse<B> {
     fetchStartTime: bigint
     fetchEndTime: bigint
-    finalizedTop?: HashAndHeight
+    finalizedHead?: HashAndHeight
 }
 
 
 export interface HotDataBatch<B> extends DataBatch<B> {
-    finalizedTop: HashAndHeight
+    finalizedHead: HashAndHeight
 }
 
 
@@ -172,8 +172,8 @@ export class ArchiveIngest<R, B extends BaseBlock> {
 
 export interface HotIngestOptions<R, B> {
     src: HotDataSource<R, B>
-    finalizedTop: HashAndHeight
-    head: HashAndHeight[]
+    finalizedHead: HashAndHeight
+    top: HashAndHeight[]
     requests: BatchRequest<R>[]
     pollInterval?: number
 }
@@ -181,31 +181,31 @@ export interface HotIngestOptions<R, B> {
 
 export class HotIngest<R, B extends BaseBlock> {
     private requests: BatchRequest<R>[]
-    private finalizedTop: HashAndHeight
-    private head: HashAndHeight[]
+    private finalizedHead: HashAndHeight
+    private top: HashAndHeight[]
     private src: HotDataSource<R, B>
     private pollInterval: number
 
     constructor(options: HotIngestOptions<R, B>) {
         this.requests = options.requests
-        this.finalizedTop = options.finalizedTop
-        this.head = options.head.slice()
+        this.finalizedHead = options.finalizedHead
+        this.top = options.top.slice()
         this.src = options.src
         this.pollInterval = options.pollInterval ?? 1000
         this.assertInvariants()
     }
 
     private assertInvariants(): void {
-        if (this.head.length > 0) {
-            assert(this.head[0].height == this.finalizedTop.height + 1)
-            for (let i = 1; i < this.head.length; i++) {
-                assert(this.head[i].height == this.head[i-1].height + 1)
+        if (this.top.length > 0) {
+            assert(this.top[0].height == this.finalizedHead.height + 1)
+            for (let i = 1; i < this.top.length; i++) {
+                assert(this.top[i].height == this.top[i-1].height + 1)
             }
         }
     }
 
     private waitsForBlocks(): boolean {
-        let next = this.finalizedTop.height + 1
+        let next = this.finalizedHead.height + 1
         for (let req of this.requests) {
             let to = req.range.to ?? Infinity
             if (next <= to) return true
@@ -225,14 +225,14 @@ export class HotIngest<R, B extends BaseBlock> {
     async *getItems(): AsyncIterable<HotDataBatch<B>> {
         while (this.waitsForBlocks()) {
             let fetchStartTime = process.hrtime.bigint()
-            let finalizedTop = await this.src.getFinalizedHead()
+            let finalizedHead = await this.src.getFinalizedHead()
             let best = await this.src.getBestHead()
 
-            assert(this.finalizedTop.height <= finalizedTop.height)
-            assert(finalizedTop.height <= best.height)
+            assert(this.finalizedHead.height <= finalizedHead.height)
+            assert(finalizedHead.height <= best.height)
 
             let chain: B[] = []
-            let top = maybeLast(this.head) ?? this.finalizedTop
+            let top = maybeLast(this.top) ?? this.finalizedHead
 
             while (top.height < best.height) {
                 let item = await this.getBlock(best)
@@ -241,9 +241,9 @@ export class HotIngest<R, B extends BaseBlock> {
             }
 
             while (top.hash !== best.hash) {
-                assert(this.head.length)
-                this.head.pop()
-                top = maybeLast(this.head) ?? this.finalizedTop
+                assert(this.top.length)
+                this.top.pop()
+                top = maybeLast(this.top) ?? this.finalizedHead
 
                 let item = await this.getBlock(best)
                 chain.push(item.block)
@@ -254,21 +254,21 @@ export class HotIngest<R, B extends BaseBlock> {
 
             chain = chain.reverse()
             for (let block of chain) {
-                this.head.push(block.header)
+                this.top.push(block.header)
             }
 
-            if (finalizedTop.height == this.finalizedTop.height) {
-                assert(finalizedTop.hash === this.finalizedTop.hash)
+            if (finalizedHead.height == this.finalizedHead.height) {
+                assert(finalizedHead.hash === this.finalizedHead.hash)
             } else {
-                assert(this.head.length)
-                assert(this.head[0].height <= finalizedTop.height)
-                assert(last(this.head).height >= finalizedTop.height)
-                while (this.head[0].height < finalizedTop.height) {
-                    this.head.shift()
+                assert(this.top.length)
+                assert(this.top[0].height <= finalizedHead.height)
+                assert(last(this.top).height >= finalizedHead.height)
+                while (this.top[0].height < finalizedHead.height) {
+                    this.top.shift()
                 }
-                assert(this.head[0].hash === finalizedTop.hash)
-                this.head.shift()
-                this.finalizedTop = finalizedTop
+                assert(this.top[0].hash === finalizedHead.hash)
+                this.top.shift()
+                this.finalizedHead = finalizedHead
             }
 
             if (chain.length) {
@@ -278,7 +278,7 @@ export class HotIngest<R, B extends BaseBlock> {
                     chainHeight: last(chain).header.height,
                     fetchStartTime,
                     fetchEndTime,
-                    finalizedTop
+                    finalizedHead: finalizedHead
                 }
             }
 

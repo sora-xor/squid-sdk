@@ -2,6 +2,7 @@ import assert from 'assert'
 import {EntityManager, FindOptionsOrder, FindOptionsRelations, FindOptionsWhere} from 'typeorm'
 import {EntityTarget} from 'typeorm/common/EntityTarget'
 import {ColumnMetadata} from 'typeorm/metadata/ColumnMetadata'
+import {ChangeTracker} from './hot'
 
 
 export interface EntityClass<T> {
@@ -55,7 +56,7 @@ export interface FindManyOptions<Entity = any> extends FindOneOptions<Entity> {
  * Restricted version of TypeORM entity manager for squid data handlers.
  */
 export class Store {
-    constructor(private em: () => Promise<EntityManager>) {}
+    constructor(private em: () => EntityManager, private changes?: ChangeTracker) {}
 
     /**
      * Alias for {@link Store.upsert}
