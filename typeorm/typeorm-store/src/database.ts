@@ -2,7 +2,7 @@ import {createOrmConfig} from '@subsquid/typeorm-config'
 import {assertNotNull, last, maybeLast} from '@subsquid/util-internal'
 import assert from 'assert'
 import {DataSource, EntityManager} from 'typeorm'
-import {ChangeTracker, rollbackBlockChanges} from './hot'
+import {ChangeTracker, rollbackBlock} from './hot'
 import {DatabaseState, FinalTxInfo, HashAndHeight, HotTxInfo} from './interfaces'
 import {Store} from './store'
 
@@ -128,7 +128,7 @@ export class TypeormDatabase<S> {
 
             for (let i = state.top.length - 1; i >= 0; i--) {
                 let block = state.top[i]
-                await rollbackBlockChanges(this.statusSchema, em, block.height)
+                await rollbackBlock(this.statusSchema, em, block.height)
             }
 
             await this.performUpdates(cb, em)
@@ -154,7 +154,7 @@ export class TypeormDatabase<S> {
             let rollbackPos = info.baseBlock.height + 1 - chain[0].height
 
             for (let i = chain.length - 1; i >= rollbackPos; i--) {
-                await rollbackBlockChanges(this.statusSchema, em, chain[i].height)
+                await rollbackBlock(this.statusSchema, em, chain[i].height)
             }
 
             for (let b of info.blocks) {

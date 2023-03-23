@@ -3,8 +3,8 @@ import {Entity, EntityClass} from './store'
 
 
 export interface RowRef {
-    tableName: string
-    rowKey: string
+    table: string
+    id: string
 }
 
 
@@ -49,8 +49,8 @@ export class ChangeTracker {
         return this.writeChangeRows(entities.map(e => {
             return {
                 kind: 'insert',
-                tableName: meta.tableName,
-                rowKey: e.id
+                table: meta.tableName,
+                id: e.id
             }
         }))
     }
@@ -72,15 +72,15 @@ export class ChangeTracker {
             if (fields) {
                 return {
                     kind: 'update',
-                    tableName: meta.tableName,
-                    rowKey: e.id,
+                    table: meta.tableName,
+                    id: e.id,
                     fields
                 }
             } else {
                 return {
                     kind: 'insert',
-                    tableName: meta.tableName,
-                    rowKey: e.id,
+                    table: meta.tableName,
+                    id: e.id,
                 }
             }
         }))
@@ -93,8 +93,8 @@ export class ChangeTracker {
             let {id, ...fields} = e
             return {
                 kind: 'delete',
-                tableName: meta.tableName,
-                rowKey: id,
+                table: meta.tableName,
+                id: id,
                 fields
             }
         }))
@@ -131,17 +131,57 @@ export class ChangeTracker {
     }
 
     private escape(name: string): string {
-        return this.em.connection.driver.escape(name)
+        return escape(this.em, name)
     }
 }
 
 
-export async function rollbackBlockChanges(
+export async function rollbackBlock(
     statusSchema: string,
     em: EntityManager,
     blockHeight: number
 ): Promise<void> {
-    let schema = em.connection.driver.escape(statusSchema)
+    let schema = escape(em, statusSchema)
+
+    let changes: ChangeRow[] = await em.query(
+        `SELECT block_height, index, change FROM ${schema}.hot_change_log WHERE block_height = ? ORDER BY index DESC`,
+        [blockHeight]
+    )
+
+    for (let rec of changes) {
+        let {table, id} = rec.change
+        table = escape(em, table)
+        switch(rec.change.kind) {
+            case 'insert':
+                await em.query(`DELETE FROM ${table} WHERE id = $1`, [id])
+                break
+            case 'update': {
+                let setPairs = Object.keys(rec.change.fields).map(column => {
+                    return `${escape(em, column)} = ?`
+                })
+                if (setPairs.length) {
+                    await em.query(
+                        `UPDATE ${table} SET ${setPairs.join(', ')} WHERE id = ?`,
+                        [...Object.values(rec.change.fields), id]
+                    )
+                }
+                break
+            }
+            case 'delete': {
+                let columns = ['id', ...Object.keys(rec.change.fields)].map(col => escape(em, col))
+                await em.query(
+                    `INSERT INTO ${table} (${columns}) VALUES (${columns.fill('?').join(', ')})`,
+                    [id, ...Object.values(rec.change.fields)]
+                )
+                break
+            }
+        }
+    }
+
+    await em.query(`DELETE FROM ${schema}.hot_block WHERE height = ?`, [blockHeight])
+}
 
 
+function escape(em: EntityManager, name: string): string {
+    return em.connection.driver.escape(name)
 }
