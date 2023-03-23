@@ -1,5 +1,5 @@
 import {createOrmConfig} from '@subsquid/typeorm-config'
-import {assertNotNull, last} from '@subsquid/util-internal'
+import {assertNotNull, last, maybeLast} from '@subsquid/util-internal'
 import assert from 'assert'
 import {DataSource, EntityManager} from 'typeorm'
 import {ChangeTracker, rollbackBlockChanges} from './hot'
@@ -60,10 +60,18 @@ export class TypeormDatabase<S> {
             `CREATE SCHEMA IF NOT EXISTS ${schema}`
         )
         await em.query(
-            `CREATE TABLE IF NOT EXISTS ${schema}.status (id int primary key, height int not null, nonce int not null)`
+            `CREATE TABLE IF NOT EXISTS ${schema}.status (` +
+            `id int primary key, ` +
+            `height int not null, ` +
+            `hash text DEFAULT '0x', ` +
+            `nonce int DEFAULT 0`+
+            `)`
         )
         await em.query( // for databases created by prev version of typeorm store
-            `ALTER TABLE ${schema}.status ADD COLUMN IF NOT EXISTS nonce int not null`
+            `ALTER TABLE ${schema}.status ADD COLUMN IF NOT EXISTS hash text DEFAULT '0x'`
+        )
+        await em.query( // for databases created by prev version of typeorm store
+            `ALTER TABLE ${schema}.status ADD COLUMN IF NOT EXISTS nonce int DEFAULT 0`
         )
         await em.query(
             `CREATE TABLE IF NOT EXISTS ${schema}.hot_block (height int primary key, hash text not null)`
@@ -77,12 +85,12 @@ export class TypeormDatabase<S> {
             `)`
         )
 
-        let status: {height: number, nonce: number}[] = await em.query(
-            `SELECT height, nonce FROM ${schema}.status WHERE id = 0`
+        let status: (HashAndHeight & {nonce: number})[] = await em.query(
+            `SELECT height, hash, nonce FROM ${schema}.status WHERE id = 0`
         )
         if (status.length == 0) {
-            await em.query(`INSERT INTO ${schema}.status (id, height) VALUES (0, -1, 0)`)
-            status.push({height: -1, nonce: 0})
+            await em.query(`INSERT INTO ${schema}.status (id, height, hash) VALUES (0, -1, '0x')`)
+            status.push({height: -1, hash: '0x', nonce: 0})
         }
 
         let top: HashAndHeight[] = await em.query(
@@ -95,8 +103,8 @@ export class TypeormDatabase<S> {
     private async getState(em: EntityManager): Promise<DatabaseState> {
         let schema = this.escapedSchema()
 
-        let status: {height: number, nonce: number}[] = await em.query(
-            `SELECT height, nonce FROM ${schema}.status WHERE id = 0`
+        let status: (HashAndHeight & {nonce: number})[] = await em.query(
+            `SELECT height, hash, nonce FROM ${schema}.status WHERE id = 0`
         )
 
         assert(status.length == 1)
@@ -111,11 +119,12 @@ export class TypeormDatabase<S> {
     transact(info: FinalTxInfo, cb: (store: Store) => Promise<void>): Promise<void> {
         return this.submit(async em => {
             let state = await this.getState(em)
-            let {from, to} = info
+            let {prevHead: prev, nextHead: next} = info
 
-            assert(state.nonce === info.nonce, RACE_MSG)
-            assert(from <= to)
-            assert(state.height < from)
+            assert(state.hash === info.prevHead.hash, RACE_MSG)
+            assert(state.height === prev.height)
+            assert(prev.height < next.height)
+            assert(prev.hash != next.hash)
 
             for (let i = state.top.length - 1; i >= 0; i--) {
                 let block = state.top[i]
@@ -124,62 +133,52 @@ export class TypeormDatabase<S> {
 
             await this.performUpdates(cb, em)
 
-            await this.updateStatus(em, state.nonce, to)
+            await this.updateStatus(em, state.nonce, next)
         })
     }
 
     transactHot(info: HotTxInfo, cb: (store: Store, block: HashAndHeight) => Promise<void>): Promise<void> {
         return this.submit(async em => {
             let state = await this.getState(em)
+            let chain = [state, ...state.top]
 
-            assert(state.nonce == info.nonce, RACE_MSG)
-            assert(state.height <= info.finalizedHead.height)
-            for (let i = 1; i < info.blocks.length; i++) {
-                assert(
-                    info.blocks[i].height === info.blocks[i-1].height + 1,
-                    'submitted blocks must form a continues chain'
+            assertChainContinuity(info.baseBlock, info.blocks)
+            assert(info.finalizedHead.height <= (maybeLast(info.blocks) ?? info.baseBlock).height)
+
+            assert(chain.find(b => b.hash === info.baseBlock.hash), RACE_MSG)
+            if (info.blocks.length == 0) {
+                assert(last(chain).hash === info.baseBlock.hash, RACE_MSG)
+            }
+            assert(chain[0].height <= info.finalizedHead.height, RACE_MSG)
+
+            let rollbackPos = info.baseBlock.height + 1 - chain[0].height
+
+            for (let i = chain.length - 1; i >= rollbackPos; i--) {
+                await rollbackBlockChanges(this.statusSchema, em, chain[i].height)
+            }
+
+            for (let b of info.blocks) {
+                let changeTracker: ChangeTracker | undefined
+
+                if (b.height > info.finalizedHead.height) {
+                    await this.insertHotBlock(em, b)
+                    changeTracker = new ChangeTracker(em, this.statusSchema, b.height)
+                }
+
+                await this.performUpdates(
+                    store => cb(store, b),
+                    em,
+                    changeTracker
                 )
             }
-            if (info.blocks.length > 0) {
-                assert(state.height < info.blocks[0].height)
-                assert(state.height + state.top.length + 1 >= info.blocks[0].height)
-                assert(info.finalizedHead.height <= last(info.blocks).height)
 
-                let rollbackPos = info.blocks[0].height - state.height - 1
+            chain = chain.slice(0, rollbackPos).concat(info.blocks)
 
-                for (let i = state.top.length - 1; i >= rollbackPos; i--) {
-                    await rollbackBlockChanges(this.statusSchema, em, state.top[i].height)
-                }
+            let finalizedHeadPos = info.finalizedHead.height - chain[0].height
+            assert(chain[finalizedHeadPos].hash === info.finalizedHead.hash)
+            await this.deleteHotBlocks(em, info.finalizedHead.height)
 
-                let chain = state.top.slice(0, rollbackPos).concat(info.blocks)
-
-                let finalizedHeadPos = info.finalizedHead.height - state.height - 1
-                assert(chain[finalizedHeadPos].hash === info.finalizedHead.hash)
-
-                await this.deleteHotBlocks(em, info.finalizedHead.height)
-
-                for (let b of info.blocks) {
-                    let changeTracker: ChangeTracker | undefined
-
-                    if (b.height > info.finalizedHead.height) {
-                        await this.insertHotBlock(em, b)
-                        changeTracker = new ChangeTracker(em, this.statusSchema, b.height)
-                    }
-
-                    await this.performUpdates(
-                        store => cb(store, b),
-                        em,
-                        changeTracker
-                    )
-                }
-            } else {
-                assert(info.finalizedHead.height <= state.height + state.top.length)
-                let finalizedHeadPos = info.finalizedHead.height - state.height - 1
-                assert(state.top[finalizedHeadPos].hash === info.finalizedHead.hash)
-                await this.deleteHotBlocks(em, info.finalizedHead.height)
-            }
-
-            await this.updateStatus(em, state.nonce, info.finalizedHead.height)
+            await this.updateStatus(em, state.nonce, info.finalizedHead)
         })
     }
 
@@ -197,15 +196,17 @@ export class TypeormDatabase<S> {
         )
     }
 
-    private async updateStatus(em: EntityManager, nonce: number, newHeight: number): Promise<void> {
+    private async updateStatus(em: EntityManager, nonce: number, next: HashAndHeight): Promise<void> {
+        let schema = this.escapedSchema()
+
         let result: [data: any[], rowsChanged: number] = await em.query(
-            `UPDATE ${this.escapedSchema()}.status SET height = $2, nonce = nonce + 1 WHERE id = 0 AND nonce = $1`,
-            [nonce, newHeight]
+            `UPDATE ${schema}.status SET height = $1, hash = $2, nonce = nonce + 1 WHERE id = 0 AND nonce = $3`,
+            [next.height, next.hash, nonce]
         )
 
         let rowsChanged = result[1]
 
-        // Will never happen when isolation level is SERIALIZABLE or REPEATABLE_READ,
+        // Will never happen if isolation level is SERIALIZABLE or REPEATABLE_READ,
         // but occasionally people use multiprocessor setups and READ_COMMITTED.
         assert.strictEqual(
             rowsChanged,
@@ -269,10 +270,16 @@ function assertStateInvariants(state: DatabaseState): DatabaseState {
     // Sanity check. Who knows what driver will return?
     assert(Number.isSafeInteger(height))
 
-    for (let block of state.top) {
-        assert(block.height === height + 1, 'hot blocks must form a continues chain')
-        height = block.height
-    }
+    assertChainContinuity(state, state.top)
 
     return state
+}
+
+
+function assertChainContinuity(base: HashAndHeight, chain: HashAndHeight[]) {
+    let prev = base
+    for (let b of chain) {
+        assert(b.height === prev.height + 1, 'blocks must form a continues chain')
+        prev = b
+    }
 }

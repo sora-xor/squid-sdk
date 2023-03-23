@@ -6,21 +6,21 @@ export interface HashAndHeight {
 
 
 export interface DatabaseState {
-    nonce: number
     height: number
+    hash: string
     top: HashAndHeight[]
+    nonce: number
 }
 
 
 export interface FinalTxInfo {
-    nonce: number
-    from: number
-    to: number
+    prevHead: HashAndHeight
+    nextHead: HashAndHeight
 }
 
 
 export interface HotTxInfo {
-    nonce: number
     finalizedHead: HashAndHeight
+    baseBlock: HashAndHeight
     blocks: HashAndHeight[]
 }
