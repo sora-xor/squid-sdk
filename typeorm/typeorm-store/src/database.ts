@@ -11,16 +11,18 @@ export type IsolationLevel = 'SERIALIZABLE' | 'READ COMMITTED' | 'REPEATABLE REA
 
 
 export interface TypeormDatabaseOptions {
+    supportHotBlocks?: boolean
     isolationLevel?: IsolationLevel
     stateSchema?: string
-    supportHotBlocks?: boolean
+    projectDir?: string
 }
 
 
-export class TypeormDatabase<S> {
+export class TypeormDatabase {
     private statusSchema: string
     private isolationLevel: IsolationLevel
     private con?: DataSource
+    private projectDir: string
 
     public readonly supportsHotBlocks: boolean
 
@@ -28,29 +30,28 @@ export class TypeormDatabase<S> {
         this.statusSchema = options?.stateSchema || 'squid_processor'
         this.isolationLevel = options?.isolationLevel || 'SERIALIZABLE'
         this.supportsHotBlocks = !!options?.supportHotBlocks
+        this.projectDir = options?.projectDir || process.cwd()
     }
 
     async connect(): Promise<DatabaseState> {
         assert(this.con == null, 'already connected')
 
-        let cfg = createOrmConfig()
-        let con = new DataSource(cfg)
+        let cfg = createOrmConfig({projectDir: this.projectDir})
+        this.con = new DataSource(cfg)
 
-        await con.initialize()
+        await this.con.initialize()
 
         try {
-            let state = await con.transaction('SERIALIZABLE', em => this.initTransaction(em))
-            this.con = con
-            return state
+            return await this.con.transaction('SERIALIZABLE', em => this.initTransaction(em))
         } catch(e: any) {
-            await con.destroy().catch(() => {}) // ignore error
+            await this.con.destroy().catch(() => {}) // ignore error
+            this.con = undefined
             throw e
         }
     }
 
     async disconnect(): Promise<void> {
-        await this.con?.destroy()
-        this.con = undefined
+        await this.con?.destroy().finally(() => this.con = undefined)
     }
 
     private async initTransaction(em: EntityManager): Promise<DatabaseState> {
@@ -78,7 +79,7 @@ export class TypeormDatabase<S> {
         )
         await em.query(
             `CREATE TABLE IF NOT EXISTS ${schema}.hot_change_log (` +
-            `block_height int non null references ${schema}.hot_blocks on delete cascade, ` +
+            `block_height int not null references ${schema}.hot_block on delete cascade, ` +
             `index int not null, ` +
             `change jsonb not null, ` +
             `PRIMARY KEY (block_height, index)` +
@@ -94,7 +95,7 @@ export class TypeormDatabase<S> {
         }
 
         let top: HashAndHeight[] = await em.query(
-            `SELECT height, hash FROM ${schema}.hot_blocks`
+            `SELECT height, hash FROM ${schema}.hot_block`
         )
 
         return assertStateInvariants({...status[0], top})
@@ -142,22 +143,22 @@ export class TypeormDatabase<S> {
             let state = await this.getState(em)
             let chain = [state, ...state.top]
 
-            assertChainContinuity(info.baseBlock, info.blocks)
-            assert(info.finalizedHead.height <= (maybeLast(info.blocks) ?? info.baseBlock).height)
+            assertChainContinuity(info.baseHead, info.newBlocks)
+            assert(info.finalizedHead.height <= (maybeLast(info.newBlocks) ?? info.baseHead).height)
 
-            assert(chain.find(b => b.hash === info.baseBlock.hash), RACE_MSG)
-            if (info.blocks.length == 0) {
-                assert(last(chain).hash === info.baseBlock.hash, RACE_MSG)
+            assert(chain.find(b => b.hash === info.baseHead.hash), RACE_MSG)
+            if (info.newBlocks.length == 0) {
+                assert(last(chain).hash === info.baseHead.hash, RACE_MSG)
             }
             assert(chain[0].height <= info.finalizedHead.height, RACE_MSG)
 
-            let rollbackPos = info.baseBlock.height + 1 - chain[0].height
+            let rollbackPos = info.baseHead.height + 1 - chain[0].height
 
             for (let i = chain.length - 1; i >= rollbackPos; i--) {
                 await rollbackBlock(this.statusSchema, em, chain[i].height)
             }
 
-            for (let b of info.blocks) {
+            for (let b of info.newBlocks) {
                 let changeTracker: ChangeTracker | undefined
 
                 if (b.height > info.finalizedHead.height) {
@@ -172,7 +173,7 @@ export class TypeormDatabase<S> {
                 )
             }
 
-            chain = chain.slice(0, rollbackPos).concat(info.blocks)
+            chain = chain.slice(0, rollbackPos).concat(info.newBlocks)
 
             let finalizedHeadPos = info.finalizedHead.height - chain[0].height
             assert(chain[finalizedHeadPos].hash === info.finalizedHead.hash)

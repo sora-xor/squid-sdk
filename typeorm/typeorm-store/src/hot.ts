@@ -107,7 +107,7 @@ export class ChangeTracker {
         )
     }
 
-    private async writeChangeRows(changes: ChangeRecord[]): Promise<void> {
+    private writeChangeRows(changes: ChangeRecord[]): Promise<void> {
         let height = new Array(changes.length)
         let index = new Array(changes.length)
         let change = new Array(changes.length)
@@ -123,7 +123,7 @@ export class ChangeTracker {
         sql += ' SELECT block_height, index, change::jsonb'
         sql += ' FROM unnest($1::int[], $2::int[], $3::text[]) AS i(block_height, index, change)'
 
-        await this.em.query(sql, [height, index, change])
+        return this.em.query(sql, [height, index, change]).then(() => {})
     }
 
     private getEntityMetadata(type: EntityClass<Entity>): EntityMetadata {
@@ -144,7 +144,7 @@ export async function rollbackBlock(
     let schema = escape(em, statusSchema)
 
     let changes: ChangeRow[] = await em.query(
-        `SELECT block_height, index, change FROM ${schema}.hot_change_log WHERE block_height = ? ORDER BY index DESC`,
+        `SELECT block_height, index, change FROM ${schema}.hot_change_log WHERE block_height = $1 ORDER BY index DESC`,
         [blockHeight]
     )
 
@@ -156,12 +156,12 @@ export async function rollbackBlock(
                 await em.query(`DELETE FROM ${table} WHERE id = $1`, [id])
                 break
             case 'update': {
-                let setPairs = Object.keys(rec.change.fields).map(column => {
-                    return `${escape(em, column)} = ?`
+                let setPairs = Object.keys(rec.change.fields).map((column, idx) => {
+                    return `${escape(em, column)} = $${idx + 1}`
                 })
                 if (setPairs.length) {
                     await em.query(
-                        `UPDATE ${table} SET ${setPairs.join(', ')} WHERE id = ?`,
+                        `UPDATE ${table} SET ${setPairs.join(', ')} WHERE id = $${setPairs.length + 1}`,
                         [...Object.values(rec.change.fields), id]
                     )
                 }
@@ -169,8 +169,9 @@ export async function rollbackBlock(
             }
             case 'delete': {
                 let columns = ['id', ...Object.keys(rec.change.fields)].map(col => escape(em, col))
+                let values = columns.map((col, idx) => `$${idx + 1}`)
                 await em.query(
-                    `INSERT INTO ${table} (${columns}) VALUES (${columns.fill('?').join(', ')})`,
+                    `INSERT INTO ${table} (${columns}) VALUES (${values.join(', ')})`,
                     [id, ...Object.values(rec.change.fields)]
                 )
                 break
@@ -178,7 +179,7 @@ export async function rollbackBlock(
         }
     }
 
-    await em.query(`DELETE FROM ${schema}.hot_block WHERE height = ?`, [blockHeight])
+    await em.query(`DELETE FROM ${schema}.hot_block WHERE height = $1`, [blockHeight])
 }
 
 

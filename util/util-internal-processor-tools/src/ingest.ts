@@ -126,6 +126,7 @@ export class ArchiveIngest<R, B extends BaseBlock> {
             assert(response.range.from <= response.range.to)
             assert(response.range.from == req.range.from)
             assert(response.range.to <= rangeEnd(req.range))
+            assert(response.range.to <= response.chainHeight)
 
             let blocks = response.blocks.sort((a, b) => a.header.height - b.header.height)
             if (blocks.length) {

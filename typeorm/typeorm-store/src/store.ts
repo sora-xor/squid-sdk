@@ -85,14 +85,18 @@ export class Store {
             for (let i = 1; i < e.length; i++) {
                 assert(entityClass === e[i].constructor, 'mass saving allowed only for entities of the same class')
             }
-            await this.em().then(em => this.saveMany(em, entityClass, e))
+            await this.changes?.trackUpsert(entityClass, e)
+            await this.saveMany(entityClass, e)
         } else {
-            await this.em().then(em => em.upsert(e.constructor as EntityClass<E>, e as any, ['id']))
+            let entityClass = e.constructor as EntityClass<E>
+            await this.changes?.trackUpsert(entityClass, [e])
+            await this.em().upsert(entityClass, e as any, ['id'])
         }
     }
 
-    private async saveMany(em: EntityManager, entityClass: EntityClass<any>, entities: any[]): Promise<void> {
+    private async saveMany(entityClass: EntityClass<any>, entities: any[]): Promise<void> {
         assert(entities.length > 0)
+        let em = this.em()
         let metadata = em.connection.getMetadata(entityClass)
         let fk = metadata.columns.filter(c => c.relationMetadata)
         if (fk.length == 0) return this.upsertMany(em, entityClass, entities)
@@ -143,13 +147,14 @@ export class Store {
             for (let i = 1; i < e.length; i++) {
                 assert(entityClass === e[i].constructor, 'mass saving allowed only for entities of the same class')
             }
-            await this.em().then(async em => {
-                for (let b of splitIntoBatches(e, 1000)) {
-                    await em.insert(entityClass, b as any)
-                }
-            })
+            await this.changes?.trackInsert(entityClass, e)
+            for (let b of splitIntoBatches(e, 1000)) {
+                await this.em().insert(entityClass, b as any)
+            }
         } else {
-            await this.em().then(em => em.insert(e.constructor as EntityClass<E>, e as any))
+            let entityClass = e.constructor as EntityClass<E>
+            await this.changes?.trackInsert(entityClass, [e])
+            await this.em().insert(entityClass, e as any)
         }
     }
 
@@ -169,46 +174,52 @@ export class Store {
                 for (let i = 1; i < e.length; i++) {
                     assert(entityClass === e[i].constructor, 'mass deletion allowed only for entities of the same class')
                 }
-                await this.em().then(em => em.delete(entityClass, e.map(i => i.id)))
+                let ids = e.map(i => i.id)
+                await this.changes?.trackDelete(entityClass, ids)
+                await this.em().delete(entityClass, ids)
             } else {
                 let entity = e as E
-                await this.em().then(em => em.delete(entity.constructor, entity.id))
+                let entityClass = entity.constructor as EntityClass<E>
+                await this.changes?.trackDelete(entityClass, [entity.id])
+                await this.em().delete(entityClass, entity.id)
             }
         } else {
-            await this.em().then(em => em.delete(e as EntityClass<E>, id))
+            let entityClass = e as EntityClass<E>
+            await this.changes?.trackDelete(entityClass, Array.isArray(id) ? id : [id])
+            await this.em().delete(entityClass, id)
         }
     }
 
-    count<E extends Entity>(entityClass: EntityClass<E>, options?: FindManyOptions<E>): Promise<number> {
-        return this.em().then(em => em.count(entityClass, options))
+    async count<E extends Entity>(entityClass: EntityClass<E>, options?: FindManyOptions<E>): Promise<number> {
+        return this.em().count(entityClass, options)
     }
 
-    countBy<E extends Entity>(entityClass: EntityClass<E>, where: FindOptionsWhere<E> | FindOptionsWhere<E>[]): Promise<number> {
-        return this.em().then(em => em.countBy(entityClass, where))
+    async countBy<E extends Entity>(entityClass: EntityClass<E>, where: FindOptionsWhere<E> | FindOptionsWhere<E>[]): Promise<number> {
+        return this.em().countBy(entityClass, where)
     }
 
-    find<E extends Entity>(entityClass: EntityClass<E>, options?: FindManyOptions<E>): Promise<E[]> {
-        return this.em().then(em => em.find(entityClass, options))
+    async find<E extends Entity>(entityClass: EntityClass<E>, options?: FindManyOptions<E>): Promise<E[]> {
+        return this.em().find(entityClass, options)
     }
 
-    findBy<E extends Entity>(entityClass: EntityClass<E>, where: FindOptionsWhere<E> | FindOptionsWhere<E>[]): Promise<E[]> {
-        return this.em().then(em => em.findBy(entityClass, where))
+    async findBy<E extends Entity>(entityClass: EntityClass<E>, where: FindOptionsWhere<E> | FindOptionsWhere<E>[]): Promise<E[]> {
+        return this.em().findBy(entityClass, where)
     }
 
-    findOne<E extends Entity>(entityClass: EntityClass<E>, options: FindOneOptions<E>): Promise<E | undefined> {
-        return this.em().then(em => em.findOne(entityClass, options)).then(noNull)
+    async findOne<E extends Entity>(entityClass: EntityClass<E>, options: FindOneOptions<E>): Promise<E | undefined> {
+        return this.em().findOne(entityClass, options).then(noNull)
     }
 
-    findOneBy<E extends Entity>(entityClass: EntityClass<E>, where: FindOptionsWhere<E> | FindOptionsWhere<E>[]): Promise<E | undefined> {
-        return this.em().then(em => em.findOneBy(entityClass, where)).then(noNull)
+    async findOneBy<E extends Entity>(entityClass: EntityClass<E>, where: FindOptionsWhere<E> | FindOptionsWhere<E>[]): Promise<E | undefined> {
+        return this.em().findOneBy(entityClass, where).then(noNull)
     }
 
-    findOneOrFail<E extends Entity>(entityClass: EntityTarget<E>, options: FindOneOptions<E>): Promise<E> {
-        return this.em().then(em => em.findOneOrFail(entityClass, options))
+    async findOneOrFail<E extends Entity>(entityClass: EntityTarget<E>, options: FindOneOptions<E>): Promise<E> {
+        return this.em().findOneOrFail(entityClass, options)
     }
 
-    findOneByOrFail<E extends Entity>(entityClass: EntityTarget<E>, where: FindOptionsWhere<E> | FindOptionsWhere<E>[]): Promise<E> {
-        return this.em().then(em => em.findOneByOrFail(entityClass, where))
+    async findOneByOrFail<E extends Entity>(entityClass: EntityTarget<E>, where: FindOptionsWhere<E> | FindOptionsWhere<E>[]): Promise<E> {
+        return this.em().findOneByOrFail(entityClass, where)
     }
 
     get<E extends Entity>(entityClass: EntityClass<E>, optionsOrId: FindOneOptions<E> | string): Promise<E | undefined> {

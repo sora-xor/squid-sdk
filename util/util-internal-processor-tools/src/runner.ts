@@ -3,15 +3,7 @@ import {assertNotNull, last} from '@subsquid/util-internal'
 import assert from 'assert'
 import {applyRangeBound, BatchRequest, getBlocksCount} from './batch'
 import {Database, HashAndHeight, HotDatabaseState} from './database'
-import {
-    ArchiveDataSource,
-    ArchiveIngest,
-    BaseBlock,
-    BatchResponse,
-    HotDataSource,
-    DataBatch,
-    HotIngest
-} from './ingest'
+import {ArchiveDataSource, ArchiveIngest, BaseBlock, BatchResponse, DataBatch, HotDataSource, HotIngest} from './ingest'
 import {Metrics} from './metrics'
 import {rangeEnd} from './range'
 import {getItemsCount, timeInterval} from './util'
@@ -180,8 +172,8 @@ export class Runner<R, B extends BaseBlock, S> {
         if (this.config.database.supportsHotBlocks) {
             return this.config.database.connect()
         } else {
-            return this.config.database.connect().then(({height}) => {
-                return {height, top: []}
+            return this.config.database.connect().then(head => {
+                return {...head, top: []}
             })
         }
     }
@@ -198,7 +190,7 @@ export class Runner<R, B extends BaseBlock, S> {
                 blocks: batch.blocks
             }, (store, block) => {
                 return this.processBatch(store, {
-                    range: {from: block.header.height, to: block.header.height},
+                    range: {from: block.height, to: block.height},
                     blocks: [block],
                     chainHeight: batch.chainHeight
                 })

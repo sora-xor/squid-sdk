@@ -5,15 +5,26 @@
 export type Database<S> = FinalDatabase<S> | HotDatabase<S>
 
 
+export interface FinalTxInfo {
+    prevHead: HashAndHeight
+    nextHead: HashAndHeight
+    isOnTop: boolean
+}
+
+
 export interface FinalDatabase<S> {
     supportsHotBlocks?: false
 
-    connect(): Promise<{height: number}>
+    connect(): Promise<HashAndHeight>
 
-    transact(
-        info: {from: number, to: number, isHead: boolean},
-        cb: (store: S) => Promise<void>
-    ): Promise<void>
+    transact(info: FinalTxInfo, cb: (store: S) => Promise<void>): Promise<void>
+}
+
+
+export interface HotTxInfo {
+    finalizedHead: HashAndHeight
+    baseHead: HashAndHeight
+    newBlocks: HashAndHeight[]
 }
 
 
@@ -22,25 +33,18 @@ export interface HotDatabase<S> {
 
     connect(): Promise<HotDatabaseState>
 
-    transact(
-        info: {from: number, to: number, isHead: boolean},
-        cb: (store: S) => Promise<void>
-    ): Promise<void>
+    transact(info: FinalTxInfo, cb: (store: S) => Promise<void>): Promise<void>
 
-    transactHot<B extends {header: HashAndHeight}>(
-        info: {blocks: B[], finalizedHead: HashAndHeight},
-        cb: (store: S, block: B) => Promise<void>
-    ): Promise<void>
+    transactHot(info: HotTxInfo, cb: (store: S, block: HashAndHeight) => Promise<void>): Promise<void>
+}
+
+
+export interface HotDatabaseState extends HashAndHeight {
+    top: HashAndHeight[]
 }
 
 
 export interface HashAndHeight {
     height: number
     hash: string
-}
-
-
-export interface HotDatabaseState {
-    height: number
-    top: HashAndHeight[]
 }

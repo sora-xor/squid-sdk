@@ -21,6 +21,6 @@ export interface FinalTxInfo {
 
 export interface HotTxInfo {
     finalizedHead: HashAndHeight
-    baseBlock: HashAndHeight
-    blocks: HashAndHeight[]
+    baseHead: HashAndHeight
+    newBlocks: HashAndHeight[]
 }
