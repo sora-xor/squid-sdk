@@ -14,6 +14,7 @@ interface RpcConnectionMetrics {
 
 export class Metrics {
     private chainHeight = -1
+    private lastBlock = -1
     private ingestSpeed = new Speed({windowSize: 5})
     private mappingSpeed = new Speed({windowSize: 5})
     private mappingItemSpeed = new Speed({windowSize: 5})
@@ -24,6 +25,7 @@ export class Metrics {
         name: 'sqd_processor_last_block',
         help: 'Last processed block',
         registers: [this.registry],
+        collect: this.collect(() => this.lastBlock)
     })
 
     private chainHeightGauge = new Gauge({
@@ -123,7 +125,7 @@ export class Metrics {
     }
 
     setLastProcessedBlock(height: number): void {
-        this.lastBlockGauge.set(height)
+        this.lastBlock = height
     }
 
     setChainHeight(height: number): void {
@@ -160,6 +162,10 @@ export class Metrics {
 
     getChainHeight(): number {
         return this.chainHeight
+    }
+
+    getLastProcessedBlock(): number {
+        return this.lastBlock
     }
 
     getSyncSpeed(): number {

@@ -1,6 +1,7 @@
 import {def, last, maybeLast, wait} from '@subsquid/util-internal'
 import assert from 'assert'
 import {BatchRequest} from './batch'
+import {HotDatabaseState} from './database'
 import {rangeEnd} from './range'
 
 
@@ -37,11 +38,13 @@ export interface DataBatch<B> extends BatchResponse<B> {
     fetchStartTime: bigint
     fetchEndTime: bigint
     finalizedHead?: HashAndHeight
+    baseHead?: HashAndHeight
 }
 
 
 export interface HotDataBatch<B> extends DataBatch<B> {
     finalizedHead: HashAndHeight
+    baseHead: HashAndHeight
 }
 
 
@@ -81,10 +84,6 @@ export class ArchiveIngest<R, B extends BaseBlock> {
         this.src = options.archive
         this.pollInterval = options.pollInterval ?? 2000
         this.maxBufferedBatches = options.maxBufferedBatches ?? 2
-    }
-
-    getLeftRequests(): BatchRequest<R>[] {
-        return this.requests.slice()
     }
 
     async shouldStopOnHeight(height: number): Promise<boolean> {
@@ -173,8 +172,7 @@ export class ArchiveIngest<R, B extends BaseBlock> {
 
 export interface HotIngestOptions<R, B> {
     src: HotDataSource<R, B>
-    finalizedHead: HashAndHeight
-    top: HashAndHeight[]
+    state: HotDatabaseState
     requests: BatchRequest<R>[]
     pollInterval?: number
 }
@@ -189,8 +187,8 @@ export class HotIngest<R, B extends BaseBlock> {
 
     constructor(options: HotIngestOptions<R, B>) {
         this.requests = options.requests
-        this.finalizedHead = options.finalizedHead
-        this.top = options.top.slice()
+        this.finalizedHead = options.state
+        this.top = options.state.top.slice()
         this.src = options.src
         this.pollInterval = options.pollInterval ?? 1000
         this.assertInvariants()
@@ -279,7 +277,8 @@ export class HotIngest<R, B extends BaseBlock> {
                     chainHeight: last(chain).header.height,
                     fetchStartTime,
                     fetchEndTime,
-                    finalizedHead: finalizedHead
+                    finalizedHead: finalizedHead,
+                    baseHead: top
                 }
             }
 

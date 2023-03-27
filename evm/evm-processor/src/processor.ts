@@ -331,7 +331,7 @@ export class EvmBatchProcessor<F extends Fields = {}> {
             runner.processBatch = function(store, batch) {
                 return handler({
                     _chain: chain,
-                    log: log.child('mapping', {batchFirstBlock: batch.range.from, batchLastBlock: batch.range.to}),
+                    log: log.child('mapping', {batchRange: batch.range}),
                     store,
                     blocks: batch.blocks as any,
                     isHead: batch.range.to === batch.chainHeight
