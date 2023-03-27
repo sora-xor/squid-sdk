@@ -4,6 +4,7 @@ import assert from 'assert'
 import {applyRangeBound, BatchRequest} from './batch'
 import {Database, HashAndHeight, HotDatabaseState} from './database'
 import {ArchiveDataSource, ArchiveIngest, BaseBlock, BatchResponse, DataBatch, HotDataSource, HotIngest} from './ingest'
+import {PrometheusServer} from './prometheus'
 import {rangeEnd} from './range'
 import {RunnerMetrics} from './runner-metrics'
 import {getItemsCount} from './util'
@@ -17,7 +18,7 @@ export interface RunnerConfig<R, B, S> {
     requests: BatchRequest<R>[]
     database: Database<S>
     log: Logger
-    prometheusPort?: number | string
+    prometheus: PrometheusServer
 }
 
 
@@ -257,15 +258,8 @@ export class Runner<R, B extends BaseBlock, S> {
 
     @def
     private async startPrometheusServer(): Promise<void> {
-        // let prometheusServer = await this.config.metrics.serve(this.getPrometheusPort())
-        // this.log.info(`prometheus metrics are served at port ${prometheusServer.port}`)
-    }
-
-    private getPrometheusPort(): number | string {
-        let port = this.config.prometheusPort
-        return port == null
-            ? process.env.PROCESSOR_PROMETHEUS_PORT || process.env.PROMETHEUS_PORT || 0
-            : port
+        let prometheusServer = await this.config.prometheus.serve()
+        this.log.info(`prometheus metrics are served at port ${prometheusServer.port}`)
     }
 
     private get log(): Logger {

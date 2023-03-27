@@ -4,7 +4,7 @@ import {ArchiveDataSource, BatchRequest, BatchResponse} from '@subsquid/util-int
 import assert from 'assert'
 import {DataRequest, DEFAULT_FIELDS, Fields, FullBlockData, FullLogItem} from '../interfaces/data'
 import {EvmBlock, EvmLog, EvmTransaction} from '../interfaces/evm'
-import {formatId, blockItemOrder} from '../util'
+import {blockItemOrder, formatId} from '../util'
 import * as gw from './gateway'
 
 
@@ -61,11 +61,10 @@ export class EvmArchive implements ArchiveDataSource<DataRequest, FullBlockData>
 
         batch.blocks.sort((a, b) => a.header.height - b.header.height)
 
-        if (batch.range.to === batch.chainHeight && maybeLast(batch.blocks)?.header.height !== batch.chainHeight) {
-            // When we are on the head, always include the head block,
-            // even if it doesn't contain requested data.
-            let lastBlockHeader = await this.fetchBlockHeader(batch.chainHeight, fieldSelection)
-                .catch(withErrorContext({blockHeight: batch.chainHeight}))
+        if (maybeLast(batch.blocks)?.header.height !== batch.range.to) {
+            // Always include last block of a batch range
+            let lastBlockHeader = await this.fetchBlockHeader(batch.range.to, fieldSelection)
+                .catch(withErrorContext({blockHeight: batch.range.to}))
 
             batch.blocks.push({
                 header: lastBlockHeader,

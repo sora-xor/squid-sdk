@@ -1,14 +1,13 @@
 import {createLogger, Logger} from '@subsquid/logger'
 import {assertNotNull, def, runProgram} from '@subsquid/util-internal'
-import {HttpClient} from '@subsquid/util-internal-http-client'
-import {HttpAgent} from '@subsquid/util-internal-http-client/lib/agent'
+import {HttpAgent, HttpClient} from '@subsquid/util-internal-http-client'
 import {
     applyRangeBound,
     BatchRequest,
     Database,
     getOrGenerateSquidId,
     mergeBatchRequests,
-    Metrics,
+    PrometheusServer,
     Range,
     Runner
 } from '@subsquid/util-internal-processor-tools'
@@ -98,7 +97,6 @@ export class EvmBatchProcessor<F extends Fields = {}> {
     private requests: BatchRequest<DataRequest>[] = []
     private src?: DataSource
     private blockRange?: Range
-    private prometheusPort?: string | number
     private fields?: Fields
     private running = false
 
@@ -150,7 +148,7 @@ export class EvmBatchProcessor<F extends Fields = {}> {
      */
     setPrometheusPort(port: number | string): this {
         this.assertNotRunning()
-        this.prometheusPort = port
+        this.getPrometheusServer().setPort(port)
         return this
     }
 
@@ -212,8 +210,8 @@ export class EvmBatchProcessor<F extends Fields = {}> {
     }
 
     @def
-    private getMetrics(): Metrics {
-        return new Metrics()
+    private getPrometheusServer(): PrometheusServer {
+        return new PrometheusServer()
     }
 
     private getDataSource(): DataSource {
@@ -235,7 +233,7 @@ export class EvmBatchProcessor<F extends Fields = {}> {
             requestTimeout: 20_000,
             log: this.getLogger().child('rpc')
         })
-        this.getMetrics().addChainRpcMetrics(client)
+        this.getPrometheusServer().addChainRpcMetrics(client)
         return client
     }
 
@@ -321,8 +319,7 @@ export class EvmBatchProcessor<F extends Fields = {}> {
                 archive: src.archive ? this.getArchiveDataSource() : undefined,
                 archivePollInterval: 2000,
                 hotDataSource: src.chain ? this.getHotDataSource() : undefined,
-                metrics: this.getMetrics(),
-                prometheusPort: this.prometheusPort || 0,
+                prometheus: this.getPrometheusServer(),
                 log
             })
 
