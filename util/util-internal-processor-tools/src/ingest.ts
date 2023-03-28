@@ -180,31 +180,26 @@ export interface HotIngestOptions<R, B> {
 
 export class HotIngest<R, B extends BaseBlock> {
     private requests: BatchRequest<R>[]
-    private finalizedHead: HashAndHeight
-    private top: HashAndHeight[]
+    private chain: HashAndHeight[]
     private src: HotDataSource<R, B>
     private pollInterval: number
 
     constructor(options: HotIngestOptions<R, B>) {
         this.requests = options.requests
-        this.finalizedHead = options.state
-        this.top = options.state.top.slice()
+        this.chain = [options.state, ...options.state.top]
         this.src = options.src
         this.pollInterval = options.pollInterval ?? 1000
         this.assertInvariants()
     }
 
     private assertInvariants(): void {
-        if (this.top.length > 0) {
-            assert(this.top[0].height == this.finalizedHead.height + 1)
-            for (let i = 1; i < this.top.length; i++) {
-                assert(this.top[i].height == this.top[i-1].height + 1)
-            }
+        for (let i = 1; i < this.chain.length; i++) {
+            assert(this.chain[i].height == this.chain[i-1].height + 1)
         }
     }
 
     private waitsForBlocks(): boolean {
-        let next = this.finalizedHead.height + 1
+        let next = this.chain[0].height + 1
         for (let req of this.requests) {
             let to = req.range.to ?? Infinity
             if (next <= to) return true
@@ -224,67 +219,78 @@ export class HotIngest<R, B extends BaseBlock> {
     async *getItems(): AsyncIterable<HotDataBatch<B>> {
         while (this.waitsForBlocks()) {
             let fetchStartTime = process.hrtime.bigint()
-            let finalizedHead = await this.src.getFinalizedHead()
-            let best = await this.src.getBestHead()
-
-            assert(this.finalizedHead.height <= finalizedHead.height)
-            assert(finalizedHead.height <= best.height)
-
-            let chain: B[] = []
-            let top = maybeLast(this.top) ?? this.finalizedHead
-
-            while (top.height < best.height) {
-                let item = await this.getBlock(best)
-                chain.push(item.block)
-                best = item.parent
-            }
-
-            while (top.hash !== best.hash) {
-                assert(this.top.length)
-                this.top.pop()
-                top = maybeLast(this.top) ?? this.finalizedHead
-
-                let item = await this.getBlock(best)
-                chain.push(item.block)
-                best = item.parent
-            }
-
+            let newBlocks = await this.pollNewBlocks()
             let fetchEndTime = process.hrtime.bigint()
 
-            chain = chain.reverse()
-            for (let block of chain) {
-                this.top.push(block.header)
-            }
-
-            if (finalizedHead.height == this.finalizedHead.height) {
-                assert(finalizedHead.hash === this.finalizedHead.hash)
-            } else {
-                assert(this.top.length)
-                assert(this.top[0].height <= finalizedHead.height)
-                assert(last(this.top).height >= finalizedHead.height)
-                while (this.top[0].height < finalizedHead.height) {
-                    this.top.shift()
-                }
-                assert(this.top[0].hash === finalizedHead.hash)
-                this.top.shift()
-                this.finalizedHead = finalizedHead
-            }
-
-            if (chain.length) {
+            if (newBlocks.length) {
                 yield {
-                    range: {from: chain[0].header.height, to: last(chain).header.height},
-                    blocks: chain,
-                    chainHeight: last(chain).header.height,
+                    range: {from: newBlocks[0].header.height, to: last(newBlocks).header.height},
+                    blocks: newBlocks,
+                    chainHeight: last(newBlocks).header.height,
                     fetchStartTime,
                     fetchEndTime,
-                    finalizedHead: finalizedHead,
-                    baseHead: top
+                    finalizedHead: this.chain[0],
+                    baseHead: {
+                        height: newBlocks[0].header.height - 1,
+                        hash: newBlocks[0].header.parentHash
+                    }
                 }
             }
 
             let sinceLastPoll = Number(process.hrtime.bigint() - fetchStartTime) / 1_000_000
             await wait(Math.max(0, this.pollInterval - sinceLastPoll))
         }
+    }
+
+    private async pollNewBlocks(): Promise<B[]> {
+        let finalizedHead = await this.src.getFinalizedHead()
+        let best = await this.src.getBestHead()
+
+        if (this.chain[0].height > finalizedHead.height) {
+            // this happens with all RPC providers
+            // sometimes we just loose the progress...
+            finalizedHead = this.chain[0]
+        }
+        assert(finalizedHead.height <= best.height)
+
+        if (last(this.chain).height > best.height) {
+            let bestPos = best.height - this.chain[0].height
+            if (this.chain[bestPos].hash === best.hash) {
+                // once again we just lost progress
+                return []
+            } else {
+                // we have a proper fork
+                // we don't apply height judgement here,
+                // because blockchains can differ in how they define the notion of the best block
+                this.chain = this.chain.slice(0, bestPos)
+            }
+        }
+
+        let newBlocks: B[] = []
+
+        while (last(this.chain).height < best.height) {
+            let item = await this.getBlock(best)
+            newBlocks.push(item.block)
+            best = item.parent
+        }
+
+        while (last(this.chain).hash !== best.hash) {
+            let item = await this.getBlock(best)
+            newBlocks.push(item.block)
+            best = item.parent
+            this.chain.pop()
+        }
+
+        newBlocks = newBlocks.reverse()
+        for (let block of newBlocks) {
+            this.chain.push(block.header)
+        }
+
+        let finalizedHeadPos = finalizedHead.height - this.chain[0].height
+        assert(this.chain[finalizedHeadPos].hash === finalizedHead.hash)
+        this.chain = this.chain.slice(finalizedHeadPos)
+
+        return newBlocks
     }
 
     private async getBlock(ref: HashAndHeight): Promise<{block: B, parent: HashAndHeight}> {
