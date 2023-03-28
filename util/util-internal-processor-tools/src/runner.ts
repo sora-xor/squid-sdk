@@ -7,7 +7,7 @@ import {ArchiveDataSource, ArchiveIngest, BaseBlock, BatchResponse, DataBatch, H
 import {PrometheusServer} from './prometheus'
 import {rangeEnd} from './range'
 import {RunnerMetrics} from './runner-metrics'
-import {getItemsCount} from './util'
+import {formatHead, getItemsCount} from './util'
 
 
 export interface RunnerConfig<R, B, S> {
@@ -24,11 +24,15 @@ export interface RunnerConfig<R, B, S> {
 
 export class Runner<R, B extends BaseBlock, S> {
     private metrics: RunnerMetrics
+    private statusReportTimer?: any
+    private hasStatusNews = false
 
     constructor(protected config: RunnerConfig<R, B, S>) {
         this.metrics = new RunnerMetrics(this.config.requests)
+        this.config.prometheus.addRunnerMetrics(this.metrics)
     }
 
+    @def
     async run(): Promise<void> {
         let log = this.config.log
 
@@ -52,14 +56,12 @@ export class Runner<R, B extends BaseBlock, S> {
             let archiveHeight = await archive.getFinalizedHeight()
             if (archiveHeight > state.height + state.top.length || hot == null) {
                 await this.initMetrics(archiveHeight, state)
+                this.log.info('using archive data source')
                 state = await this.processFinalizedBlocks({
                     state,
                     src: archive,
                     srcPollInterval: this.config.archivePollInterval,
-                    shouldStopOnHeight: hot && (async height => {
-                        let h = await hot.getFinalizedHeight()
-                        return h > height
-                    })
+                    shouldStopOnHeight: hot && (async () => true)
                 })
                 if (this.getLeftRequests(state).length == 0) return
             }
@@ -69,6 +71,7 @@ export class Runner<R, B extends BaseBlock, S> {
 
         let chainFinalizedHeight = await hot.getFinalizedHeight()
         await this.initMetrics(chainFinalizedHeight, state)
+        this.log.info('using chain RPC data source')
         if (chainFinalizedHeight > state.height + state.top.length) {
             state = await this.processFinalizedBlocks({
                 state,
@@ -171,7 +174,14 @@ export class Runner<R, B extends BaseBlock, S> {
             pollInterval: this.config.hotDataSourcePollInterval
         })
 
+        let lastHead = maybeLast(state.top) || state
+
         for await (let batch of ingest.getItems()) {
+            let newHead = maybeLast(batch.blocks)?.header || batch.baseHead
+            if (batch.baseHead.hash !== lastHead.hash) {
+                this.log.info(`navigating a fork from ${formatHead(lastHead)} to ${formatHead(newHead)} with a common base ${formatHead(batch.baseHead)}`)
+            }
+            this.log.debug({batch})
             await this.withProgressMetrics(batch, () => {
                 return db.transactHot({
                     finalizedHead: batch.finalizedHead,
@@ -180,6 +190,7 @@ export class Runner<R, B extends BaseBlock, S> {
                 }, (store, ref) => {
                     let idx = ref.height - batch.baseHead.height - 1
                     let block = batch.blocks[idx]
+
                     assert.strictEqual(block.header.hash, ref.hash)
                     assert.strictEqual(block.header.height, ref.height)
 
@@ -190,6 +201,7 @@ export class Runner<R, B extends BaseBlock, S> {
                     })
                 })
             })
+            lastHead = newHead
         }
     }
 
@@ -214,8 +226,23 @@ export class Runner<R, B extends BaseBlock, S> {
             mappingStartTime,
             mappingEndTime
         )
-        this.log.info(this.metrics.getStatusLine())
+        this.reportStatus()
         return result
+    }
+
+    private reportStatus(): void {
+        if (this.statusReportTimer == null) {
+            this.log.info(this.metrics.getStatusLine())
+            this.statusReportTimer = setTimeout(() => {
+                this.statusReportTimer = undefined
+                if (this.hasStatusNews) {
+                    this.hasStatusNews = false
+                    this.reportStatus()
+                }
+            }, 5000)
+        } else {
+            this.hasStatusNews = true
+        }
     }
 
     private async initMetrics(chainHeight: number, state: HotDatabaseState): Promise<void> {
@@ -247,7 +274,7 @@ export class Runner<R, B extends BaseBlock, S> {
     }
 
     private printProcessingMessage(state: HashAndHeight): void {
-        let from = state.height + 1
+        let from = Math.max(state.height + 1, this.config.requests[0].range.from)
         let end = rangeEnd(last(this.config.requests).range)
         let msg = `processing blocks from ${from}`
         if (Number.isSafeInteger(end)) {

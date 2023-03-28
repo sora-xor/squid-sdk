@@ -95,7 +95,7 @@ export class TypeormDatabase {
         }
 
         let top: HashAndHeight[] = await em.query(
-            `SELECT height, hash FROM ${schema}.hot_block`
+            `SELECT height, hash FROM ${schema}.hot_block ORDER BY height`
         )
 
         return assertStateInvariants({...status[0], top})
@@ -111,7 +111,7 @@ export class TypeormDatabase {
         assert(status.length == 1)
 
         let top: HashAndHeight[] = await em.query(
-            `SELECT hash, height FROM ${schema}.hot_block`
+            `SELECT hash, height FROM ${schema}.hot_block ORDER BY height`
         )
 
         return assertStateInvariants({...status[0], top})

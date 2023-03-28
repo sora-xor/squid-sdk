@@ -1,8 +1,8 @@
-import {addErrorContext, assertNotNull, groupBy} from '@subsquid/util-internal'
-import {BatchRequest, BatchResponse, HotDataSource, HashAndHeight} from '@subsquid/util-internal-processor-tools'
+import {addErrorContext, groupBy} from '@subsquid/util-internal'
+import {BatchRequest, BatchResponse, HashAndHeight, HotDataSource} from '@subsquid/util-internal-processor-tools'
 import {RpcClient} from '@subsquid/util-internal-resilient-rpc'
 import assert from 'assert'
-import {DataRequest, FullBlockData} from '../interfaces/data'
+import {DataRequest, FullBlockData, FullLogItem} from '../interfaces/data'
 import {EvmBlock, EvmLog, EvmTransaction} from '../interfaces/evm'
 import {blockItemOrder, formatId} from '../util'
 import * as rpc from './rpc'
@@ -26,7 +26,7 @@ export class EvmRpcDataSource implements HotDataSource<DataRequest, FullBlockDat
     constructor(options: EvmRpcDataSourceOptions) {
         this.rpc = options.rpc
         this.batchSize = options.blockBatchSize || 10
-        this.finalityConfirmation = options.finalityConfirmation ?? 32
+        this.finalityConfirmation = options.finalityConfirmation ?? 10
     }
 
     async getFinalizedBatch(request: BatchRequest<DataRequest>): Promise<BatchResponse<FullBlockData>> {
@@ -201,7 +201,9 @@ function mapBlock(block: rpc.Block, logs: rpc.Log[]): FullBlockData {
     let txIndex = new Map<EvmTransaction['index'], EvmTransaction>()
 
     for (let rpcTx of block.transactions) {
-        assert(typeof rpcTx == 'object')
+        if (typeof rpcTx != 'object') {
+            break
+        }
         let transaction = mapTransaction(rpcTx)
         txIndex.set(transaction.index, transaction)
         items.push({kind: 'transaction', transaction})
@@ -209,12 +211,15 @@ function mapBlock(block: rpc.Block, logs: rpc.Log[]): FullBlockData {
 
     for (let rpcLog of logs) {
         let log = mapLog(rpcLog)
-        let transaction = assertNotNull(txIndex.get(log.transactionIndex))
-        items.push({
+        let transaction = txIndex.get(log.transactionIndex)
+        let item: Partial<FullLogItem> = {
             kind: 'log',
             log,
-            transaction
-        })
+        }
+        if (transaction) {
+            item.transaction = transaction
+        }
+        items.push(item as FullLogItem)
     }
 
     items.sort(blockItemOrder)

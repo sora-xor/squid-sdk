@@ -1,3 +1,5 @@
+import {HashAndHeight} from './database'
+
 
 export function getOrGenerateSquidId(): string {
     return process.env.SQUID_ID || `gen-${randomString(10)}`
@@ -34,4 +36,9 @@ export function getItemsCount(blocks: {items: unknown[]}[]): number {
         count += blocks[i].items.length
     }
     return count
+}
+
+
+export function formatHead(head: HashAndHeight): string {
+    return `${head.height}#${head.hash.slice(2, 10)}`
 }
