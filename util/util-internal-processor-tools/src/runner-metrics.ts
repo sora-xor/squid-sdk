@@ -46,7 +46,8 @@ export class RunnerMetrics {
     }
 
     getEstimatedBlocksLeft(): number {
-        return getBlocksCount(this.requests, this.lastBlock, Math.max(this.chainHeight, this.lastBlock))
+        let count = getBlocksCount(this.requests, this.lastBlock, Math.max(this.chainHeight, this.lastBlock))
+        return count == 1 ? 0 : count
     }
 
     getChainHeight(): number {
