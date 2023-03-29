@@ -52,6 +52,15 @@ export class Data {
     @Column('int4', {array: true})
     integerArray?: number[] | null
 
+    @Column('numeric', {transformer: {from: (s?: string) => s == null ? null : BigInt(s), to: (val?: bigint) => val?.toString()}})
+    bigInteger?: bigint | null
+
+    @Column('timestamp with time zone')
+    dateTime?: Date | null
+
+    @Column('bytea')
+    bytes?: Uint8Array | null
+
     @ManyToOne(() => Item)
     item?: Item | null
 }

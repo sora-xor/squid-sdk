@@ -100,11 +100,30 @@ export class ChangeTracker {
         }))
     }
 
-    private fetchEntities(table: string, ids: string[]): Promise<Entity[]> {
-        return this.em.query(
+    private async fetchEntities(table: string, ids: string[]): Promise<Entity[]> {
+        let entities = await this.em.query(
             `SELECT * FROM ${this.escape(table)} WHERE id = ANY($1::text[])`,
             [ids]
         )
+
+        // Use different representation for raw bytes.
+        // That's because we can't serialize Buffer values in change records
+        // via `JSON.stringify()` (even with replacement function).
+        // It would be better to handle this issue during change record serialization,
+        // but it is just easier to do it here...
+        for (let e of entities) {
+            for (let key in e) {
+                let value = e[key]
+                if (value instanceof Uint8Array) {
+                    value = Buffer.isBuffer(value)
+                        ? value
+                        : Buffer.from(value.buffer, value.byteOffset, value.byteLength)
+                    e[key] = '\\x' + value.toString('hex').toUpperCase()
+                }
+            }
+        }
+
+        return entities
     }
 
     private writeChangeRows(changes: ChangeRecord[]): Promise<void> {

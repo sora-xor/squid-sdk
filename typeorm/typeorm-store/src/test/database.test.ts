@@ -13,6 +13,9 @@ describe('TypeormDatabase', function() {
             text_array text[], 
             "integer" int4, 
             integer_array int4[], 
+            big_integer numeric,
+            date_time timestamp with time zone,
+            "bytes" bytea,
             item_id text references item
         )`
     ])
@@ -101,7 +104,10 @@ describe('TypeormDatabase', function() {
             text: 'a1',
             textArray: ['a1', 'A1'],
             integer: 1,
-            integerArray: [1, 10]
+            integerArray: [1, 10],
+            bigInteger: 1000000000000000000000000000000000000000000000000000000000n,
+            dateTime: new Date(1000000000000),
+            bytes: Buffer.from([100, 100, 100])
         })
 
         let a2 = new Data({
@@ -109,7 +115,10 @@ describe('TypeormDatabase', function() {
             text: 'a2',
             textArray: ['a2', 'A2'],
             integer: 2,
-            integerArray: [2, 20]
+            integerArray: [2, 20],
+            bigInteger: 2000000000000000000000000000000000000000000000000000000000n,
+            dateTime: new Date(2000000000000),
+            bytes: Buffer.from([200, 200, 200])
         })
 
         let a3 = new Data({
@@ -117,7 +126,10 @@ describe('TypeormDatabase', function() {
             text: 'a3',
             textArray: ['a3', 'A30'],
             integer: 30,
-            integerArray: [30, 300]
+            integerArray: [30, 300],
+            bigInteger: 3000000000000000000000000000000000000000000000000000000000n,
+            dateTime: new Date(3000000000000),
+            bytes: Buffer.from([3, 3, 3])
         })
 
         await db.transactHot({
@@ -147,7 +159,10 @@ describe('TypeormDatabase', function() {
             text: 'b1',
             textArray: ['b1', 'B1'],
             integer: 10,
-            integerArray: [10, 100]
+            integerArray: [10, 100],
+            bigInteger: 8000000000000000000000000000000000000000000000000000000000_000_000n,
+            dateTime: new Date(100000),
+            bytes: Buffer.from([1, 1, 1])
         })
 
         let b2 = new Data({
@@ -155,7 +170,10 @@ describe('TypeormDatabase', function() {
             text: 'b2',
             textArray: ['b2', 'B2'],
             integer: 20,
-            integerArray: [20, 200]
+            integerArray: [20, 200],
+            bigInteger: 9000000000000000000000000000000000000000000000000000000000_000n,
+            dateTime: new Date(2000),
+            bytes: Buffer.from([2, 2, 2])
         })
 
         await db.transactHot({
