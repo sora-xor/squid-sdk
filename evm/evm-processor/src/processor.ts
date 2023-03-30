@@ -23,7 +23,7 @@ export type DataSource = ArchiveDataSource | ChainDataSource
 
 interface ArchiveDataSource {
     /**
-     * Subsquid substrate archive endpoint URL
+     * Subsquid evm archive endpoint URL
      */
     archive: string
     /**

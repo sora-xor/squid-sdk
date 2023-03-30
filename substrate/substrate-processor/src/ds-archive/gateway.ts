@@ -1,7 +1,7 @@
-import type {QualifiedName, SubstrateBlock, SubstrateEvent, SubstrateExtrinsicSignature} from "./substrate"
+import type {QualifiedName, SubstrateBlock, SubstrateEvent, SubstrateExtrinsicSignature} from '../interfaces/substrate'
 
 
-export interface BatchRequest {
+export interface Request {
     fromBlock: number
     toBlock: number
     includeAllBlocks?: boolean
@@ -75,13 +75,13 @@ export interface AcalaEvmExecutedFailedRequest {
 }
 
 
-export interface BatchResponse {
-    data: BatchBlock[]
+export interface Response {
+    data: Block[]
     nextBlock: number
 }
 
 
-export interface BatchBlock {
+export interface Block {
     header: Omit<SubstrateBlock, 'timestamp' | 'validator'> & {timestamp: string} & {validator: string | null}
     events?: Event[]
     calls?: Call[]

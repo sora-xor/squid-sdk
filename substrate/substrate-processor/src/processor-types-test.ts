@@ -1,12 +1,12 @@
-import {EventHandlerContext} from '../interfaces/dataHandlers'
-import {BatchContext, SubstrateBatchProcessor} from './batchProcessor'
+import {EventHandlerContext} from './interfaces/dataHandlers'
+import {DataHandlerContext, SubstrateBatchProcessor} from './processor'
 
 
 const db: any = {}
 
 
 function getItem<I>(cb: (item: I) => void) {
-    return async function(ctx: BatchContext<any, I>) {
+    return async function(ctx: DataHandlerContext<any, I>) {
     }
 }
 

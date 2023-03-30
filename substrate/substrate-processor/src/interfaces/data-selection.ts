@@ -9,6 +9,11 @@ import type {
 } from './substrate'
 
 
+type Simplify<T> = {
+    [K in keyof T]: T[K]
+} & {}
+
+
 type Req<T> = {
     [P in keyof T]?: unknown
 }
@@ -163,7 +168,7 @@ export type CallItem<Name, R = false> = WithKind<
     >
 
 
-export type ItemMerge<A, B, R> =
+type ItemMerge<A, B, R> =
     [A] extends [never]
         ? B
         : [B] extends [never]
@@ -215,3 +220,24 @@ export interface NoDataSelection {
 export interface MayBeDataSelection<R> {
     data?: R
 }
+
+
+type MakePartial<T, F extends keyof T> = Pick<T, F> & Partial<Omit<T, F>>
+
+
+export type SubstrateEventP = Simplify<
+    Omit<MakePartial<SubstrateEvent, 'id' | 'name' | 'pos'>, 'extrinsic' | 'call'> & {
+        extrinsic?: SubstrateExtrinsicP
+        call?: SubstrateCallP
+    }
+>
+
+
+export type SubstrateExtrinsicP = Simplify<
+    Omit<MakePartial<SubstrateExtrinsic, 'id' | 'pos' | 'success'>, 'call'> & {call?: SubstrateCallP}
+>
+
+
+export type SubstrateCallP = Simplify<
+    Omit<MakePartial<SubstrateCall, 'id' | 'name' | 'pos' | 'success'>, 'parent'> & {parent?: SubstrateCallP}
+>

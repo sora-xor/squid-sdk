@@ -11,13 +11,11 @@ import {
     eliminatePolkadotjsTypesBundle,
     PolkadotjsTypesBundle
 } from '@subsquid/substrate-metadata/lib/old/typesBundle-polkadotjs'
-import {def, last, runProgram} from '@subsquid/util-internal'
-import {applyRangeBound, Batch, mergeBatches} from '../batch/generic'
-import {PlainBatchRequest} from '../batch/request'
-import {Chain} from '../chain'
-import {BlockData} from '../ingest'
-import type {AcalaEvmExecutedOptions, BlockRangeOption, EvmLogOptions} from '../interfaces/dataHandlers'
-import type {
+import {def, runProgram} from '@subsquid/util-internal'
+import {BatchRequest, Database, PrometheusServer, Range} from '@subsquid/util-internal-processor-tools'
+import {Chain} from './chain'
+import {BlockData, DataRequest} from './interfaces/data'
+import {
     AddCallItem,
     AddEventItem,
     CallDataRequest,
@@ -27,12 +25,8 @@ import type {
     EventItem,
     MayBeDataSelection,
     NoDataSelection
-} from '../interfaces/dataSelection'
-import type {Database} from '../interfaces/db'
-import type {SubstrateBlock} from '../interfaces/substrate'
-import {Range} from '../util/range'
-import {DataSource} from './handlerProcessor'
-import {Config, Options, Runner} from './runner'
+} from './interfaces/data-selection'
+import {AcalaEvmExecutedOptions, BlockRangeOption, DataSource, EvmLogOptions} from './interfaces/options'
 
 
 /**
@@ -50,7 +44,7 @@ export type BatchProcessorEventItem<T> = Extract<BatchProcessorItem<T>, {kind: '
 export type BatchProcessorCallItem<T> = Extract<BatchProcessorItem<T>, {kind: 'call'}>
 
 
-export interface BatchContext<Store, Item> {
+export interface DataHandlerContext<Store, Item> {
     /**
      * Not yet public description of chain metadata
      * @internal
@@ -58,7 +52,7 @@ export interface BatchContext<Store, Item> {
     _chain: Chain
     log: Logger
     store: Store
-    blocks: BatchBlock<Item>[]
+    blocks: BlockData<Item>[]
     /**
      * Signals, that the processor reached the head of a chain.
      *
@@ -68,40 +62,18 @@ export interface BatchContext<Store, Item> {
 }
 
 
-export interface BatchBlock<Item> {
-    /**
-     * Block header
-     */
-    header: SubstrateBlock
-    /**
-     * A unified log of events and calls.
-     *
-     * All events deposited within a call are placed
-     * before the call. All child calls are placed before the parent call.
-     * List of block events is a subsequence of unified log.
-     */
-    items: Item[]
-}
-
-
 /**
  * Provides methods to configure and launch data processing.
- *
- * Unlike {@link SubstrateProcessor}, `SubstrateBatchProcessor` can have
- * only one data handler, which accepts a list of blocks.
- *
- * This gives mapping developers an opportunity to reduce the number of round-trips
- * both to database and chain nodes,
- * thus providing much better performance.
  */
 export class SubstrateBatchProcessor<Item extends {kind: string, name: string} = EventItem<'*'> | CallItem<"*">> {
-    private batches: Batch<PlainBatchRequest>[] = []
-    private options: Options = {}
+    private batches: BatchRequest<DataRequest>[] = []
+    private blockRange?: Range
     private src?: DataSource
     private typesBundle?: OldTypesBundle | OldSpecsBundle
+    private prometheus = new PrometheusServer()
     private running = false
 
-    private add(request: PlainBatchRequest, range?: Range): void {
+    private add(request: DataRequest, range?: Range): void {
         this.batches.push({
             range: range || {from: 0},
             request
@@ -172,9 +144,7 @@ export class SubstrateBatchProcessor<Item extends {kind: string, name: string} =
         options?: BlockRangeOption & MayBeDataSelection<EventDataRequest>
     ): SubstrateBatchProcessor<any> {
         this.assertNotRunning()
-        let req = new PlainBatchRequest()
-        req.events.push({name, data: options?.data})
-        this.add(req, options?.range)
+        this.add({events: [{name, data: options?.data}]}, options?.range)
         return this
     }
 
@@ -242,9 +212,7 @@ export class SubstrateBatchProcessor<Item extends {kind: string, name: string} =
         options?: BlockRangeOption & MayBeDataSelection<CallDataRequest>
     ): SubstrateBatchProcessor<any> {
         this.assertNotRunning()
-        let req = new PlainBatchRequest()
-        req.calls.push({name, data: options?.data})
-        this.add(req, options?.range)
+        this.add({calls: [{name, data: options?.data}]}, options?.range)
         return this
     }
 
@@ -282,14 +250,16 @@ export class SubstrateBatchProcessor<Item extends {kind: string, name: string} =
         options?: EvmLogOptions & MayBeDataSelection<EventDataRequest>
     ): SubstrateBatchProcessor<any> {
         this.assertNotRunning()
-        let req = new PlainBatchRequest()
         let contractAddresses = Array.isArray(contractAddress) ? contractAddress : [contractAddress]
-        req.evmLogs.push(...contractAddresses.map((contractAddress) => ({
-            contract: contractAddress.toLowerCase(),
-            filter: options?.filter,
-            data: options?.data
-        })))
-        this.add(req, options?.range)
+        this.add({
+            evmLogs: contractAddresses.map(addr => {
+                return {
+                    contract: addr.toLowerCase(),
+                    filter: options?.filter,
+                    data: options?.data
+                }
+            })
+        }, options?.range)
         return this
     }
 
@@ -331,14 +301,16 @@ export class SubstrateBatchProcessor<Item extends {kind: string, name: string} =
         options?: {range?: Range, sighash?: string} & MayBeDataSelection<CallDataRequest>
     ): SubstrateBatchProcessor<any> {
         this.assertNotRunning()
-        let req = new PlainBatchRequest()
         let contractAddresses = Array.isArray(contractAddress) ? contractAddress : [contractAddress]
-        req.ethereumTransactions.push(...contractAddresses.map((contractAddress) => ({
-            contract: contractAddress.toLowerCase(),
-            sighash: options?.sighash,
-            data: options?.data
-        })))
-        this.add(req, options?.range)
+        this.add({
+            ethereumTransactions: contractAddresses.map(addr => {
+                return {
+                    contract: addr.toLowerCase(),
+                    sighash: options?.sighash,
+                    data: options?.data
+                }
+            })
+        }, options?.range)
         return this
     }
 
@@ -361,12 +333,12 @@ export class SubstrateBatchProcessor<Item extends {kind: string, name: string} =
         options?: BlockRangeOption & MayBeDataSelection<EventDataRequest>
     ): SubstrateBatchProcessor<any> {
         this.assertNotRunning()
-        let req = new PlainBatchRequest()
-        req.contractsEvents.push({
-            contract: contractAddress.toLowerCase(),
-            data: options?.data
-        })
-        this.add(req, options?.range)
+        this.add({
+            contractsEvents: [{
+                contract: contractAddress.toLowerCase(),
+                data: options?.data
+            }]
+        }, options?.range)
         return this
     }
 
@@ -389,12 +361,12 @@ export class SubstrateBatchProcessor<Item extends {kind: string, name: string} =
         options?: BlockRangeOption & MayBeDataSelection<EventDataRequest>
     ): SubstrateBatchProcessor<any> {
         this.assertNotRunning()
-        let req = new PlainBatchRequest()
-        req.gearMessagesEnqueued.push({
-            program: programId,
-            data: options?.data
-        })
-        this.add(req, options?.range)
+        this.add({
+            gearMessagesEnqueued: [{
+                program: programId,
+                data: options?.data
+            }]
+        }, options?.range)
         return this
     }
 
@@ -417,12 +389,12 @@ export class SubstrateBatchProcessor<Item extends {kind: string, name: string} =
         options?: BlockRangeOption & MayBeDataSelection<EventDataRequest>
     ): SubstrateBatchProcessor<any> {
         this.assertNotRunning()
-        let req = new PlainBatchRequest()
-        req.gearUserMessagesSent.push({
-            program: programId,
-            data: options?.data
-        })
-        this.add(req, options?.range)
+        this.add({
+            gearUserMessagesSent: [{
+                program: programId,
+                data: options?.data
+            }]
+        }, options?.range)
         return this
     }
 
@@ -464,14 +436,16 @@ export class SubstrateBatchProcessor<Item extends {kind: string, name: string} =
         options?: AcalaEvmExecutedOptions & MayBeDataSelection<EventDataRequest>
     ): SubstrateBatchProcessor<any> {
         this.assertNotRunning()
-        let req = new PlainBatchRequest()
         let contractAddresses = Array.isArray(contractAddress) ? contractAddress : [contractAddress]
-        req.acalaEvmExecuted.push(...contractAddresses.map((contractAddress) => ({
-            contract: contractAddress.toLowerCase(),
-            logs: options?.logs,
-            data: options?.data
-        })))
-        this.add(req, options?.range)
+        this.add({
+            acalaEvmExecuted: contractAddresses.map(contractAddress => {
+                return {
+                    contract: contractAddress.toLowerCase(),
+                    logs: options?.logs,
+                    data: options?.data
+                }
+            })
+        }, options?.range)
         return this
     }
 
@@ -494,14 +468,16 @@ export class SubstrateBatchProcessor<Item extends {kind: string, name: string} =
         options?: AcalaEvmExecutedOptions & MayBeDataSelection<EventDataRequest>
     ): SubstrateBatchProcessor<any> {
         this.assertNotRunning()
-        let req = new PlainBatchRequest()
         let contractAddresses = Array.isArray(contractAddress) ? contractAddress : [contractAddress]
-        req.acalaEvmExecutedFailed.push(...contractAddresses.map((contractAddress) => ({
-            contract: contractAddress.toLowerCase(),
-            logs: options?.logs,
-            data: options?.data
-        })))
-        this.add(req, options?.range)
+        this.add({
+            acalaEvmExecutedFailed: contractAddresses.map(contractAddress => {
+                return {
+                    contract: contractAddress.toLowerCase(),
+                    logs: options?.logs,
+                    data: options?.data
+                }
+            })
+        }, options?.range)
         return this
     }
 
@@ -515,9 +491,7 @@ export class SubstrateBatchProcessor<Item extends {kind: string, name: string} =
      */
     includeAllBlocks(range?: Range): this {
         this.assertNotRunning()
-        let req = new PlainBatchRequest()
-        req.includeAllBlocks = true
-        this.add(req)
+        this.add({includeAllBlocks: true}, range)
         return this
     }
 
@@ -530,7 +504,7 @@ export class SubstrateBatchProcessor<Item extends {kind: string, name: string} =
      */
     setPrometheusPort(port: number | string): this {
         this.assertNotRunning()
-        this.options.prometheusPort = port
+        this.prometheus.setPort(port)
         return this
     }
 
@@ -542,7 +516,7 @@ export class SubstrateBatchProcessor<Item extends {kind: string, name: string} =
      */
     setBlockRange(range?: Range): this {
         this.assertNotRunning()
-        this.options.blockRange = range
+        this.blockRange = range
         return this
     }
 
@@ -654,47 +628,35 @@ export class SubstrateBatchProcessor<Item extends {kind: string, name: string} =
      * it terminates the entire program in case of error or
      * at the end of data processing.
      *
-     * @param db - database is responsible for providing storage to data handlers
+     * @param db - database is responsible for providing storage to the data handler
      * and persisting mapping progress and status.
      *
-     * @param handler - The data handler, see {@link BatchContext} for an API available to the handler.
+     * @param handler - The data handler, see {@link DataHandlerContext} for an API available to the handler.
      */
-    run<Store>(db: Database<Store>, handler: (ctx: BatchContext<Store, Item>) => Promise<void>): void {
+    run<Store>(db: Database<Store>, handler: (ctx: DataHandlerContext<Store, Item>) => Promise<void>): void {
         let logger = this.getLogger()
         this.running = true
         runProgram(async () => {
-            let batches = mergeBatches(this.batches, (a, b) => a.merge(b))
-
-            let config: Config<Store, PlainBatchRequest> = {
-                getDatabase: () => db,
-                getArchiveEndpoint: () => this.getArchiveEndpoint(),
-                getChainEndpoint: () => this.getChainEndpoint(),
-                getTypes: this.getTypes.bind(this),
-                getLogger: () => logger,
-                getOptions: () => this.options,
-                createBatches(blockRange: Range): Batch<PlainBatchRequest>[] {
-                    return applyRangeBound(batches, blockRange)
-                }
-            }
-
-            let runner = new Runner(config)
-
-            runner.processBatch = async function(request: PlainBatchRequest, chain: Chain, blocks: BlockData[], isHead: boolean) {
-                if (blocks.length == 0) return
-                let from = blocks[0].header.height
-                let to = last(blocks).header.height
-                return db.transact(from, to, store => {
-                    return handler({
-                        _chain: chain,
-                        log: logger.child('mapping'),
-                        store,
-                        blocks: blocks as any,
-                        isHead
-                    })
-                })
-            }
-
-            return runner.run()
+            // let batches = mergeBatches(this.batches, (a, b) => a.merge(b))
+            //
+            // let runner = new Runner()
+            //
+            // runner.processBatch = async function(request: PlainBatchRequest, chain: Chain, blocks: BlockData[], isHead: boolean) {
+            //     if (blocks.length == 0) return
+            //     let from = blocks[0].header.height
+            //     let to = last(blocks).header.height
+            //     return db.transact(from, to, store => {
+            //         return handler({
+            //             _chain: chain,
+            //             log: logger.child('mapping'),
+            //             store,
+            //             blocks: blocks as any,
+            //             isHead
+            //         })
+            //     })
+            // }
+            //
+            // return runner.run()
         }, err => logger.fatal(err))
     }
 }

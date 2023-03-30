@@ -10,12 +10,10 @@ import {
 } from '@subsquid/util-internal'
 import {Output} from '@subsquid/util-internal-code-printer'
 import assert from 'assert'
-import type {Batch} from './batch/generic'
 import {BatchRequest} from './batch/request'
-import * as gw from './interfaces/gateway'
+import * as gw from './ds-archive/gateway'
 import {SubstrateBlock, SubstrateCall, SubstrateEvent, SubstrateExtrinsic} from './interfaces/substrate'
-import {printGqlArguments} from './util/gql'
-import {Range, rangeEnd} from './util/range'
+import {printGqlArguments} from './ds-archive/gql'
 
 
 export type Item = {
@@ -101,7 +99,7 @@ export class Ingest<R extends BatchRequest> {
 
                     let response: {
                         status: {head: number},
-                        batch: gw.BatchResponse,
+                        batch: gw.Response,
                     } = await this.options.archiveRequest(ctx.archiveQuery)
 
                     let fetchEndTime = process.hrtime.bigint()
@@ -166,7 +164,7 @@ export class Ingest<R extends BatchRequest> {
 
         let req = batch.request
 
-        let args: gw.BatchRequest = {
+        let args: gw.Request = {
             fromBlock: from,
             toBlock: to,
             includeAllBlocks: req.getIncludeAllBlocks()
@@ -274,10 +272,10 @@ export class Ingest<R extends BatchRequest> {
         })
     }
 
-    private async fetchBlockHeader(height: number): Promise<gw.BatchBlock> {
+    private async fetchBlockHeader(height: number): Promise<gw.Block> {
         let q = new Output()
 
-        let args: gw.BatchRequest = {
+        let args: gw.Request = {
             fromBlock: height,
             toBlock: height,
             includeAllBlocks: true
@@ -289,7 +287,7 @@ export class Ingest<R extends BatchRequest> {
             })
         })
 
-        let response: {batch: gw.BatchResponse} = await this.options.archiveRequest(q.toString())
+        let response: {batch: gw.Response} = await this.options.archiveRequest(q.toString())
         assert(response.batch.data.length == 1)
         return response.batch.data[0]
     }
@@ -358,7 +356,7 @@ function toGatewayFields(req: any | undefined, shape: Record<string, any> | null
 }
 
 
-function mapGatewayBlock(block: gw.BatchBlock): BlockData {
+function mapGatewayBlock(block: gw.Block): BlockData {
     try {
         return tryMapGatewayBlock(block)
     } catch(e: any) {
@@ -370,7 +368,7 @@ function mapGatewayBlock(block: gw.BatchBlock): BlockData {
 }
 
 
-function tryMapGatewayBlock(block: gw.BatchBlock): BlockData {
+function tryMapGatewayBlock(block: gw.Block): BlockData {
     block.calls = block.calls || []
     block.events = block.events || []
     block.extrinsics = block.extrinsics || []
