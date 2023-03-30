@@ -12,8 +12,19 @@ import {
     PolkadotjsTypesBundle
 } from '@subsquid/substrate-metadata/lib/old/typesBundle-polkadotjs'
 import {def, runProgram} from '@subsquid/util-internal'
-import {BatchRequest, Database, PrometheusServer, Range} from '@subsquid/util-internal-processor-tools'
-import {Chain} from './chain'
+import {HttpAgent, HttpClient} from '@subsquid/util-internal-http-client'
+import {
+    applyRangeBound,
+    BatchRequest,
+    Database,
+    getOrGenerateSquidId,
+    mergeBatchRequests,
+    PrometheusServer,
+    Range
+} from '@subsquid/util-internal-processor-tools'
+import {RpcClient} from '@subsquid/util-internal-resilient-rpc'
+import {Chain, ChainManager} from './chain'
+import {SubstrateArchive} from './ds-archive/client'
 import {BlockData, DataRequest} from './interfaces/data'
 import {
     AddCallItem,
@@ -27,6 +38,7 @@ import {
     NoDataSelection
 } from './interfaces/data-selection'
 import {AcalaEvmExecutedOptions, BlockRangeOption, DataSource, EvmLogOptions} from './interfaces/options'
+import {mergeDataRequests} from './util/data-request-merge'
 
 
 /**
@@ -66,7 +78,7 @@ export interface DataHandlerContext<Store, Item> {
  * Provides methods to configure and launch data processing.
  */
 export class SubstrateBatchProcessor<Item extends {kind: string, name: string} = EventItem<'*'> | CallItem<"*">> {
-    private batches: BatchRequest<DataRequest>[] = []
+    private requests: BatchRequest<DataRequest>[] = []
     private blockRange?: Range
     private src?: DataSource
     private typesBundle?: OldTypesBundle | OldSpecsBundle
@@ -74,7 +86,7 @@ export class SubstrateBatchProcessor<Item extends {kind: string, name: string} =
     private running = false
 
     private add(request: DataRequest, range?: Range): void {
-        this.batches.push({
+        this.requests.push({
             range: range || {from: 0},
             request
         })
@@ -617,8 +629,61 @@ export class SubstrateBatchProcessor<Item extends {kind: string, name: string} =
     }
 
     @def
+    private getSquidId(): string {
+        return getOrGenerateSquidId()
+    }
+
+    @def
+    private getArchiveDataSource(): SubstrateArchive {
+        let http = new HttpClient({
+            baseUrl: this.getArchiveEndpoint(),
+            headers: {
+                'x-squid-id': this.getSquidId()
+            },
+            agent: new HttpAgent({
+                keepAlive: true
+            }),
+            httpTimeout: 20_000,
+            retryAttempts: Number.MAX_SAFE_INTEGER,
+            log: this.getLogger().child('archive')
+        })
+
+        return new SubstrateArchive(http)
+    }
+
+    @def
+    private getChainClient(): RpcClient {
+        let url = this.getChainEndpoint()
+        let log = this.getLogger().child('chain-rpc', {url})
+
+        let client = new RpcClient({
+            endpoints: [{url, capacity: 10}],
+            requestTimeout: 20_000,
+            log
+        })
+
+        this.prometheus.addChainRpcMetrics(client)
+        return client
+    }
+
+    @def
+    private getChainManager(): ChainManager {
+        return new ChainManager({
+            archive: this.getArchiveDataSource(),
+            getChainClient: () => this.getChainClient(),
+            getTypes: meta => this.getTypes(meta.specName, meta.specVersion)
+        })
+    }
+
+    @def
     private getLogger(): Logger {
         return createLogger('sqd:processor')
+    }
+
+    @def
+    private getBatchRequests(): BatchRequest<DataRequest>[] {
+        let requests = mergeBatchRequests(this.requests, mergeDataRequests)
+        return applyRangeBound(requests, this.blockRange)
     }
 
     /**
