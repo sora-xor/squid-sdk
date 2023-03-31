@@ -1,4 +1,4 @@
-import {EventHandlerContext} from './interfaces/dataHandlers'
+import {EventItem} from './interfaces/data-selection'
 import {DataHandlerContext, SubstrateBatchProcessor} from './processor'
 
 
@@ -80,11 +80,11 @@ new SubstrateBatchProcessor()
         } as const
     })
     .run(db, getItem(item => {
-        type Reward = EventHandlerContext<unknown, {
+        type Reward = EventItem<string, {
             event: {
                 args: true,
-                call: {args: true},
-                extrinsic: {hash: true},
+                call: {args: true}
+                extrinsic: {hash: true}
             }
         }>['event']
         if (item.name == 'Staking.Rewarded') {

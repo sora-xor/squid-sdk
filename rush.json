@@ -744,11 +744,6 @@
       "shouldPublish": false
     },
     {
-      "packageName": "moonsama-erc721",
-      "projectFolder": "test/moonsama-erc721",
-      "shouldPublish": false
-    },
-    {
       "packageName": "types-test",
       "projectFolder": "test/types",
       "shouldPublish": false

@@ -1,9 +1,9 @@
 import type {QualifiedName, SubstrateBlock, SubstrateEvent, SubstrateExtrinsicSignature} from '../interfaces/substrate'
 
 
-export interface Request {
+export interface BatchRequest {
     fromBlock: number
-    toBlock: number
+    toBlock?: number
     includeAllBlocks?: boolean
     events?: ObjectRequest[]
     calls?: ObjectRequest[]
@@ -75,7 +75,7 @@ export interface AcalaEvmExecutedFailedRequest {
 }
 
 
-export interface Response {
+export interface BatchResponse {
     data: Block[]
     nextBlock: number
 }
@@ -92,7 +92,7 @@ export interface Block {
 export interface Event {
     id: string
     indexInBlock?: number
-    name?: QualifiedName
+    name: QualifiedName
     args?: any
     phase?: SubstrateEvent["phase"]
     extrinsicId?: string
@@ -103,9 +103,9 @@ export interface Event {
 
 export interface Call {
     id: string
-    name?: QualifiedName
+    name: QualifiedName
     args?: any
-    success?: boolean
+    success: boolean
     extrinsicId?: string
     parentId?: string
     pos: number
@@ -119,7 +119,7 @@ export interface Extrinsic {
     signature?: SubstrateExtrinsicSignature
     fee?: string
     tip?: string
-    success?: boolean
+    success: boolean
     hash?: string
     pos: number
 }

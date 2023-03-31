@@ -36,7 +36,6 @@ specifiers:
   '@rush-temp/ink-typegen': file:./projects/ink-typegen.tgz
   '@rush-temp/karura-erc20': file:./projects/karura-erc20.tgz
   '@rush-temp/logger': file:./projects/logger.tgz
-  '@rush-temp/moonsama-erc721': file:./projects/moonsama-erc721.tgz
   '@rush-temp/openreader': file:./projects/openreader.tgz
   '@rush-temp/ops-xcm-typegen': file:./projects/ops-xcm-typegen.tgz
   '@rush-temp/rpc-client': file:./projects/rpc-client.tgz
@@ -75,8 +74,6 @@ specifiers:
   '@rush-temp/util-xxhash': file:./projects/util-xxhash.tgz
   '@rush-temp/workspace': file:./projects/workspace.tgz
   '@subsquid/graphiql-console': ^0.3.0
-  '@subsquid/util-internal-http-client': ^0.0.1
-  '@subsquid/util-internal-resilient-rpc': ^0.0.2
   '@substrate/calc': ^0.2.8
   '@types/deep-equal': ^1.0.1
   '@types/express': ^4.17.17
@@ -156,7 +153,7 @@ dependencies:
   '@rush-temp/e2e-test-suite': file:projects/e2e-test-suite.tgz_supports-color@8.1.1
   '@rush-temp/eth-usdc-transfers': file:projects/eth-usdc-transfers.tgz_supports-color@8.1.1
   '@rush-temp/evm-ingest': file:projects/evm-ingest.tgz
-  '@rush-temp/evm-processor': file:projects/evm-processor.tgz_supports-color@8.1.1
+  '@rush-temp/evm-processor': file:projects/evm-processor.tgz
   '@rush-temp/evm-typegen': file:projects/evm-typegen.tgz
   '@rush-temp/frontier': file:projects/frontier.tgz
   '@rush-temp/gear-nft': file:projects/gear-nft.tgz_f3112c9ccceff8ba6e1ae691573f7615
@@ -166,7 +163,6 @@ dependencies:
   '@rush-temp/ink-typegen': file:projects/ink-typegen.tgz
   '@rush-temp/karura-erc20': file:projects/karura-erc20.tgz_supports-color@8.1.1
   '@rush-temp/logger': file:projects/logger.tgz
-  '@rush-temp/moonsama-erc721': file:projects/moonsama-erc721.tgz_supports-color@8.1.1
   '@rush-temp/openreader': file:projects/openreader.tgz_supports-color@8.1.1
   '@rush-temp/ops-xcm-typegen': file:projects/ops-xcm-typegen.tgz
   '@rush-temp/rpc-client': file:projects/rpc-client.tgz_supports-color@8.1.1
@@ -196,7 +192,7 @@ dependencies:
   '@rush-temp/util-internal-http-client': file:projects/util-internal-http-client.tgz
   '@rush-temp/util-internal-http-server': file:projects/util-internal-http-server.tgz
   '@rush-temp/util-internal-json': file:projects/util-internal-json.tgz
-  '@rush-temp/util-internal-processor-tools': file:projects/util-internal-processor-tools.tgz_supports-color@8.1.1
+  '@rush-temp/util-internal-processor-tools': file:projects/util-internal-processor-tools.tgz
   '@rush-temp/util-internal-prometheus-server': file:projects/util-internal-prometheus-server.tgz
   '@rush-temp/util-internal-read-lines': file:projects/util-internal-read-lines.tgz
   '@rush-temp/util-internal-resilient-rpc': file:projects/util-internal-resilient-rpc.tgz
@@ -205,8 +201,6 @@ dependencies:
   '@rush-temp/util-xxhash': file:projects/util-xxhash.tgz
   '@rush-temp/workspace': file:projects/workspace.tgz
   '@subsquid/graphiql-console': 0.3.0
-  '@subsquid/util-internal-http-client': 0.0.1
-  '@subsquid/util-internal-resilient-rpc': 0.0.2_supports-color@8.1.1
   '@substrate/calc': 0.2.8
   '@types/deep-equal': 1.0.1
   '@types/express': 4.17.17
@@ -1328,14 +1322,6 @@ packages:
       - supports-color
     dev: false
 
-  /@subsquid/logger/0.3.1:
-    resolution: {integrity: sha512-Hi0aWeVgK0OZ3L2KxRejLCHIBIs6k3AR8FEb9RCKgQvqHK8DDNuMFANo4obHqXDZpDF+Ef+T050Oz5n4O1u3lA==}
-    dependencies:
-      '@subsquid/util-internal-hex': 0.0.2
-      '@subsquid/util-internal-json': 0.2.1
-      supports-color: 8.1.1
-    dev: false
-
   /@subsquid/openreader/1.0.3_supports-color@8.1.1:
     resolution: {integrity: sha512-mf12hO47I6BuU/x9dyYMW526R5if2OTGgHFw2ANRkjSIVVa0x7wjKpXRoVVY/VSAU2PKHEaSzhVSM8pTfGTK0g==}
     hasBin: true
@@ -1356,15 +1342,6 @@ packages:
     transitivePeerDependencies:
       - encoding
       - pg-native
-      - supports-color
-    dev: false
-
-  /@subsquid/rpc-client/2.0.0_supports-color@8.1.1:
-    resolution: {integrity: sha512-El67TER6lmeoaeOlRNELlH2AGpG4YWg8YRnIw3yrfzYhiXsmpX1Hra4XJi53/RxU5tsS1qMON2bd44QbceL27Q==}
-    dependencies:
-      '@subsquid/util-timeout': 1.0.0
-      websocket: 1.0.34_supports-color@8.1.1
-    transitivePeerDependencies:
       - supports-color
     dev: false
 
@@ -1406,10 +1383,6 @@ packages:
     resolution: {integrity: sha512-JqOMotioko6SLAquVM5GMi7qvzo4W9LPw6kw2Wse1wdnQt1HjpS9t2Zo8QkAh9PzZR+0lfVskBm83AhUCGsOGQ==}
     dev: false
 
-  /@subsquid/util-internal-counters/0.0.2:
-    resolution: {integrity: sha512-x/O+56bR/X41ZEKjxZy0IqiapKCN9gGJB7G8md+idvGeC15kw8r5pg2Ck9tulB07VQEOqWLNNuvobrfvH0hNkg==}
-    dev: false
-
   /@subsquid/util-internal-gql-request/0.1.1:
     resolution: {integrity: sha512-KBCtokrwi7jjEqucUhHm/x4hmZvmJjxkEoYEhPCLwPirzOCtcNWjmsgaE41hGfbd8VnTeo2cji9cjGjSvwGvkw==}
     dependencies:
@@ -1422,41 +1395,10 @@ packages:
     resolution: {integrity: sha512-sNok0jQV6+OpAl3QKaH2VFh8PKZyZ6XHZhZ71LeirOhgfVprKFmEvFG9yQIp7qKe7JGXmolX54zu150OMP9f5w==}
     dev: false
 
-  /@subsquid/util-internal-hex/0.0.2:
-    resolution: {integrity: sha512-EgqYmZjJ6ox885tXBObEAZQZImpRc5pFzQeOLEh78gGPTc39IH3VI4BG0zaomStvgBx+e25M7Y2cc+ae+ttuXQ==}
-    dev: false
-
-  /@subsquid/util-internal-http-client/0.0.1:
-    resolution: {integrity: sha512-jEtQMu/hYpdK4rU/kEyYwsQh95OC7HZexmWIyNRVMlS/3iRy2Ia6bSJKIUtb/baA4+KMU+l6xaWhvMKIHw8eoQ==}
-    dependencies:
-      '@subsquid/logger': 0.3.1
-      '@subsquid/util-internal': 1.1.0
-      node-fetch: 3.3.0
-    dev: false
-
   /@subsquid/util-internal-json/0.2.0:
     resolution: {integrity: sha512-tkDPXQ+2/2RCO2+O3AtaI71p9TQLOcv2hJWOmgNGzzQrTXp8wbyEZIybm33lsLo2HUmQN/BQKzk4PHkLa36nMQ==}
     dependencies:
       '@subsquid/util-internal-hex': 0.0.1
-    dev: false
-
-  /@subsquid/util-internal-json/0.2.1:
-    resolution: {integrity: sha512-X9bhhKWBcaeZekGEiE15i8xwfq07/aIYDhA+JFdiVT3aygdb9b57V85USuArd6oh3jjHeQ2SBgj6B5rd8m8vlA==}
-    dependencies:
-      '@subsquid/util-internal-hex': 0.0.2
-    dev: false
-
-  /@subsquid/util-internal-resilient-rpc/0.0.2_supports-color@8.1.1:
-    resolution: {integrity: sha512-V/QAw80+olIQ7pD/Wv/ZuoFDZV5fASRNEj9qI2ZRiFV8IFlyIXAyEQInMBsPaezP+/c2PLcitjB7Vr64agUQxA==}
-    dependencies:
-      '@subsquid/logger': 0.3.1
-      '@subsquid/rpc-client': 2.0.0_supports-color@8.1.1
-      '@subsquid/util-internal': 1.1.0
-      '@subsquid/util-internal-counters': 0.0.2
-      '@subsquid/util-internal-http-client': 0.0.1
-      '@subsquid/util-timeout': 1.0.0
-    transitivePeerDependencies:
-      - supports-color
     dev: false
 
   /@subsquid/util-internal/0.0.1:
@@ -1467,19 +1409,11 @@ packages:
     resolution: {integrity: sha512-uiGA6LwrgqZzg/1M8CL4CQdZ5k8yZmR1fEor6wGOf366RyL5tyXCETrhI5xsX/AXCO+nPAtahemOqqJKTAAbkQ==}
     dev: false
 
-  /@subsquid/util-internal/1.1.0:
-    resolution: {integrity: sha512-O6m666RDcWEw4vb3bmeNZKlAa1rGOHQvS0nhZFTBXnxZpqK/pU5N0jrQ7X/3is0pY2RKxFoxTurZjhv4QdxtqA==}
-    dev: false
-
   /@subsquid/util-naming/0.0.1:
     resolution: {integrity: sha512-qxvZX/JJ8zqBxsGrVATu/M3Q3vGWXPO5L0AGIGtNUaBZm8T3WlzKUn6+MDuxU18xaLS50xEpYa91tUgIqga9WA==}
     dependencies:
       camelcase: 6.3.0
       inflected: 2.1.0
-    dev: false
-
-  /@subsquid/util-timeout/1.0.0:
-    resolution: {integrity: sha512-6LiXYuRKIFcuUOsHPL3qN+cYDZJiCPGQFDdBECrZvXM/FtjF6dloX9JS4LJ7lMHsnKsu7v78+ioiUYpk1Jlyug==}
     dev: false
 
   /@substrate/calc/0.2.8:
@@ -5157,7 +5091,7 @@ packages:
     dev: false
 
   file:projects/eth-usdc-transfers.tgz_supports-color@8.1.1:
-    resolution: {integrity: sha512-y52r82rT4XKZWq6kPgNmIzIIQ6bkRJMsgzXaPRitjXn8mAWm1sb6HKvQOi2pc4BrkR5wo6RGhwN9Ra+sXDh7gQ==, tarball: file:projects/eth-usdc-transfers.tgz}
+    resolution: {integrity: sha512-laCpzmjQm9blIiwnY/14pqU1kDeHhom7BiEr1xwMSJSCCVltbmBDGdvK/aJW0XQnzgNRNAH9ufrkfYzD33fouw==, tarball: file:projects/eth-usdc-transfers.tgz}
     id: file:projects/eth-usdc-transfers.tgz
     name: '@rush-temp/eth-usdc-transfers'
     version: 0.0.0
@@ -5202,18 +5136,13 @@ packages:
       typescript: 4.9.5
     dev: false
 
-  file:projects/evm-processor.tgz_supports-color@8.1.1:
-    resolution: {integrity: sha512-Rrsm7/BPFbI7fXmjRwj9NwM+kjjSQbneeOtt9Ua4nynW108U8QljKb6c1WEh/+p/Pogo5fm/McY1MBd6SCzTBw==, tarball: file:projects/evm-processor.tgz}
-    id: file:projects/evm-processor.tgz
+  file:projects/evm-processor.tgz:
+    resolution: {integrity: sha512-dbF5jSo5UxOagg6K9tHDNJBSK7eQcfa9b0GXmk71/txHvICMUOw8e2hJ8vBVUJFo83AgUob2RAnRhw+3X7ZSpg==, tarball: file:projects/evm-processor.tgz}
     name: '@rush-temp/evm-processor'
     version: 0.0.0
     dependencies:
-      '@subsquid/util-internal-http-client': 0.0.1
-      '@subsquid/util-internal-resilient-rpc': 0.0.2_supports-color@8.1.1
       '@types/node': 16.18.12
       typescript: 4.9.5
-    transitivePeerDependencies:
-      - supports-color
     dev: false
 
   file:projects/evm-typegen.tgz:
@@ -5431,41 +5360,6 @@ packages:
       typescript: 4.9.5
     dev: false
 
-  file:projects/moonsama-erc721.tgz_supports-color@8.1.1:
-    resolution: {integrity: sha512-fZh9fNE3/T98F4SCfFUzsBW1PTv9N2n16LTrCxpuj7LWgPpnp1fw+IjsA9vKPRBTl0DjJZJqIjO7DuM/UoTYSA==, tarball: file:projects/moonsama-erc721.tgz}
-    id: file:projects/moonsama-erc721.tgz
-    name: '@rush-temp/moonsama-erc721'
-    version: 0.0.0
-    dependencies:
-      '@subsquid/substrate-frontier-evm': 0.0.1
-      '@types/node': 16.18.12
-      dotenv: 16.0.3
-      ethers: 5.7.2
-      pg: 8.9.0
-      typeorm: 0.3.12_pg@8.9.0+supports-color@8.1.1
-      typescript: 4.9.5
-    transitivePeerDependencies:
-      - '@google-cloud/spanner'
-      - '@sap/hana-client'
-      - better-sqlite3
-      - bufferutil
-      - hdb-pool
-      - ioredis
-      - mongodb
-      - mssql
-      - mysql2
-      - oracledb
-      - pg-native
-      - pg-query-stream
-      - redis
-      - sql.js
-      - sqlite3
-      - supports-color
-      - ts-node
-      - typeorm-aurora-data-api-driver
-      - utf-8-validate
-    dev: false
-
   file:projects/openreader.tgz_supports-color@8.1.1:
     resolution: {integrity: sha512-q9RtwoCw84pieISsVtKSlb0ua/kHCacXjRQCKMmE0ceZV2GuHOpmveV7Fd/KIwhtVPTyhX+ZqklAV2IkdLOUQQ==, tarball: file:projects/openreader.tgz}
     id: file:projects/openreader.tgz
@@ -5671,7 +5565,7 @@ packages:
     dev: false
 
   file:projects/substrate-processor.tgz:
-    resolution: {integrity: sha512-SCwkCOmRQqJtl09pEwCfKY9p5D3BuJvhFNC1wxNGw4o8RhzNIJbehT/Kq+TkW97HqJuc2NPDELIAzWofnsJd1Q==, tarball: file:projects/substrate-processor.tgz}
+    resolution: {integrity: sha512-tie/Z1w+AXDERIFiJgyJnqxXJvnvYMs1jcu5idX6XtKK6quSrXpuffdkzoQabbj7+itDSNoXdpg9UgJr69L9HQ==, tarball: file:projects/substrate-processor.tgz}
     name: '@rush-temp/substrate-processor'
     version: 0.0.0
     dependencies:
@@ -5898,14 +5792,11 @@ packages:
       typescript: 4.9.5
     dev: false
 
-  file:projects/util-internal-processor-tools.tgz_supports-color@8.1.1:
-    resolution: {integrity: sha512-qG4/sB4bm62AE3UVj/GHwG5fOywqkqUabWSRra9VWO9iKycXv/Lt+P/bR03h3kcLsHuojR3FgmWjgMFsDEBEMg==, tarball: file:projects/util-internal-processor-tools.tgz}
-    id: file:projects/util-internal-processor-tools.tgz
+  file:projects/util-internal-processor-tools.tgz:
+    resolution: {integrity: sha512-S0lODqH64gi28gzG9XdggUuFomIgh7JpJxmhOAg8NiiriVMpYFjOgdbmJ+H74s06U4nnbxYKG0pnulcYAXX2Iw==, tarball: file:projects/util-internal-processor-tools.tgz}
     name: '@rush-temp/util-internal-processor-tools'
     version: 0.0.0
     dependencies:
-      '@subsquid/util-internal-http-client': 0.0.1
-      '@subsquid/util-internal-resilient-rpc': 0.0.2_supports-color@8.1.1
       '@types/mocha': 10.0.1
       '@types/node': 16.18.12
       expect: 29.4.2
@@ -5913,8 +5804,6 @@ packages:
       mocha: 10.2.0
       prom-client: 14.1.1
       typescript: 4.9.5
-    transitivePeerDependencies:
-      - supports-color
     dev: false
 
   file:projects/util-internal-prometheus-server.tgz:

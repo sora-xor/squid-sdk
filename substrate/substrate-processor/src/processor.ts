@@ -11,16 +11,18 @@ import {
     eliminatePolkadotjsTypesBundle,
     PolkadotjsTypesBundle
 } from '@subsquid/substrate-metadata/lib/old/typesBundle-polkadotjs'
-import {def, runProgram} from '@subsquid/util-internal'
+import {addErrorContext, def, last, runProgram} from '@subsquid/util-internal'
 import {HttpAgent, HttpClient} from '@subsquid/util-internal-http-client'
 import {
     applyRangeBound,
     BatchRequest,
+    BatchResponse,
     Database,
     getOrGenerateSquidId,
     mergeBatchRequests,
     PrometheusServer,
-    Range
+    Range,
+    Runner
 } from '@subsquid/util-internal-processor-tools'
 import {RpcClient} from '@subsquid/util-internal-resilient-rpc'
 import {Chain, ChainManager} from './chain'
@@ -686,6 +688,69 @@ export class SubstrateBatchProcessor<Item extends {kind: string, name: string} =
         return applyRangeBound(requests, this.blockRange)
     }
 
+    private async processBatch<Store>(
+        store: Store,
+        batch: BatchResponse<BlockData<Item>>,
+        handler: (ctx: DataHandlerContext<Store, Item>) => Promise<void>
+    ): Promise<void> {
+        for await (let {chain, blocks} of this.splitBySpec(batch)) {
+            try {
+                await handler({
+                    _chain: chain,
+                    log: this.getLogger().child('mapping'),
+                    store,
+                    blocks,
+                    isHead: last(blocks).header.height === batch.chainHeight
+                })
+            } catch(err: any) {
+                throw addErrorContext(err, {
+                    batchRange: {
+                        from: blocks[0].header.height,
+                        to: last(blocks).header.height
+                    }
+                })
+            }
+        }
+    }
+
+    private async *splitBySpec(batch: BatchResponse<BlockData<Item>>): AsyncIterable<{
+        chain: Chain
+        blocks: BlockData<Item>[]
+    }> {
+        let manager = this.getChainManager()
+
+        let pack: {
+            chain: Chain
+            blocks: BlockData<Item>[]
+        } | undefined
+
+        for (let b of batch.blocks) {
+            if (pack == null) {
+                pack = {
+                    chain: await manager.getChainForBlock(b.header),
+                    blocks: [b]
+                }
+            } else if (pack.blocks.length > 1 && pack.blocks[0].header.specId === b.header.specId) {
+                pack.blocks.push(b)
+            } else {
+                let chain = await manager.getChainForBlock(b.header)
+                if (pack.chain === chain) {
+                    pack.blocks.push(b)
+                } else {
+                    yield pack
+                    pack = {
+                        chain,
+                        blocks: [b]
+                    }
+                }
+            }
+        }
+
+        if (pack) {
+            yield pack
+        }
+    }
+
     /**
      * Run data processing.
      *
@@ -693,35 +758,31 @@ export class SubstrateBatchProcessor<Item extends {kind: string, name: string} =
      * it terminates the entire program in case of error or
      * at the end of data processing.
      *
-     * @param db - database is responsible for providing storage to the data handler
+     * @param database - database is responsible for providing storage to the data handler
      * and persisting mapping progress and status.
      *
      * @param handler - The data handler, see {@link DataHandlerContext} for an API available to the handler.
      */
-    run<Store>(db: Database<Store>, handler: (ctx: DataHandlerContext<Store, Item>) => Promise<void>): void {
-        let logger = this.getLogger()
+    run<Store>(database: Database<Store>, handler: (ctx: DataHandlerContext<Store, Item>) => Promise<void>): void {
+        this.assertNotRunning()
         this.running = true
+        let log = this.getLogger()
+
         runProgram(async () => {
-            // let batches = mergeBatches(this.batches, (a, b) => a.merge(b))
-            //
-            // let runner = new Runner()
-            //
-            // runner.processBatch = async function(request: PlainBatchRequest, chain: Chain, blocks: BlockData[], isHead: boolean) {
-            //     if (blocks.length == 0) return
-            //     let from = blocks[0].header.height
-            //     let to = last(blocks).header.height
-            //     return db.transact(from, to, store => {
-            //         return handler({
-            //             _chain: chain,
-            //             log: logger.child('mapping'),
-            //             store,
-            //             blocks: blocks as any,
-            //             isHead
-            //         })
-            //     })
-            // }
-            //
-            // return runner.run()
-        }, err => logger.fatal(err))
+            let runner = new Runner({
+                database,
+                requests: this.getBatchRequests(),
+                archive: this.getArchiveDataSource(),
+                archivePollInterval: 2000,
+                prometheus: this.prometheus,
+                log
+            })
+
+            runner.processBatch = (store, batch) => {
+                return this.processBatch(store, batch as any, handler)
+            }
+
+            return runner.run()
+        }, err => log.fatal(err))
     }
 }
