@@ -282,7 +282,7 @@ export class HttpClient {
         return bytes
     }
 
-    protected isRetryableError(error: HttpResponse | Error, req?: FetchRequest): boolean {
+    isRetryableError(error: HttpResponse | Error, req?: FetchRequest): boolean {
         if (isHttpConnectionError(error)) return true
         if (error instanceof HttpTimeoutError) return true
         if (error instanceof HttpResponse) {

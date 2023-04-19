@@ -1,4 +1,4 @@
-import {addErrorContext, last, withErrorContext} from '@subsquid/util-internal'
+import {addErrorContext, last, wait, withErrorContext} from '@subsquid/util-internal'
 import {HttpClient} from '@subsquid/util-internal-http-client'
 import {ArchiveDataSource, BatchRequest, BatchResponse} from '@subsquid/util-internal-processor-tools'
 import {DataRequest, DEFAULT_FIELDS, Fields, FullBlockData, FullLogItem} from '../interfaces/data'
@@ -36,9 +36,9 @@ export class EvmArchive implements ArchiveDataSource<DataRequest, FullBlockData>
             chainHeight: res.chainHeight
         }
 
-        for (let gwb of res.blocks) {
+        for (let b of res.blocks) {
             batch.blocks.push(
-                tryMapGatewayBlock(gwb)
+                tryMapGatewayBlock(b)
             )
         }
 
@@ -46,16 +46,33 @@ export class EvmArchive implements ArchiveDataSource<DataRequest, FullBlockData>
     }
 
     private async query(q: gw.BatchRequest): Promise<{blocks: gw.BlockData[], chainHeight: number}> {
-        let worker: string = await this.http.get(`/${q.fromBlock}/worker`)
+        let blocks: gw.BlockData[] | undefined = undefined
+        let retrySchedule = [5000, 10000, 20000]
+        let retries = 0
 
-        let blocks: gw.BlockData[] = await this.http.post(worker, {json: q})
-            .catch(withErrorContext({archiveQuery: q}))
+        while (blocks == null) {
+            blocks = await this.fetchBlocks(q).catch(async err => {
+                if (this.http.isRetryableError(err)) {
+                    let pause = retrySchedule[Math.min(retries, retrySchedule.length - 1)]
+                    retries += 1
+                    await wait(pause)
+                    return undefined
+                }
+                throw err
+            })
+        }
 
         let chainHeight = this.lastKnownChainHeight && last(blocks).header.number < this.lastKnownChainHeight
             ? this.lastKnownChainHeight
             : await this.getFinalizedHeight()
 
         return {blocks, chainHeight}
+    }
+
+    private async fetchBlocks(q: gw.BatchRequest): Promise<gw.BlockData[]> {
+        let worker: string = await this.http.get(`/${q.fromBlock}/worker`)
+        return this.http.post(worker, {json: q, retryAttempts: 2, retrySchedule: [1000]})
+            .catch(withErrorContext({archiveQuery: q}))
     }
 
     async getFinalizedHeight(): Promise<number> {
