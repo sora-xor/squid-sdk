@@ -3,7 +3,7 @@ import {BatchRequest, BatchResponse, HashAndHeight, HotDataSource} from '@subsqu
 import {RpcClient} from '@subsquid/util-internal-resilient-rpc'
 import assert from 'assert'
 import {DataRequest, FullBlockData, FullLogItem} from '../interfaces/data'
-import {EvmBlock, EvmLog, EvmTransaction} from '../interfaces/evm'
+import {EvmBlock, EvmLog, EvmTransaction, Qty} from '../interfaces/evm'
 import {blockItemOrder, formatId} from '../util'
 import * as rpc from './rpc'
 
@@ -43,9 +43,9 @@ export class EvmRpcDataSource implements HotDataSource<DataRequest, FullBlockDat
         assert(firstBlock <= height, 'requested blocks from non-finalized range')
         lastBlock = Math.min(height, lastBlock)
 
-        let needsTransactions = this.needsTransactions(request.request)
-        let needsReceipts = needsTransactions && !!request.request.fields?.transaction?.status
-        let needsLogs = !!request.request.logs?.length
+        let needsTransactions = transactionsRequested(request.request)
+        let needsReceipts = receiptsRequested(request.request)
+        let needsLogs = logsRequested(request.request)
 
         let blockPromises: Promise<rpc.Block>[] = []
         for (let i = firstBlock; i <= lastBlock; i++) {
@@ -100,13 +100,6 @@ export class EvmRpcDataSource implements HotDataSource<DataRequest, FullBlockDat
         }])
     }
 
-    private needsTransactions(req: DataRequest): boolean {
-        return !!(
-            req.transactions?.length ||
-            req.logs?.length && req.fields?.log?.transaction
-        )
-    }
-
     private async mapBlockWithReceipts(block: rpc.Block, needsLogs: boolean): Promise<FullBlockData> {
         let logs: rpc.Log[] = []
         let blockHeight = qty2Int(block.number)
@@ -136,7 +129,7 @@ export class EvmRpcDataSource implements HotDataSource<DataRequest, FullBlockDat
     }
 
     private async getHeight(): Promise<number> {
-        let qty: rpc.Qty = await this.rpc.call('eth_blockNumber')
+        let qty: Qty = await this.rpc.call('eth_blockNumber')
         let height = parseInt(qty)
         assert(Number.isSafeInteger(height))
         return height
@@ -161,19 +154,16 @@ export class EvmRpcDataSource implements HotDataSource<DataRequest, FullBlockDat
     }
 
     async getBlock(blockHash: string, request?: DataRequest): Promise<FullBlockData> {
-        let needsTransactions = !!request && this.needsTransactions(request)
-        let needsLogs = !!request && !!request.logs?.length
         let block: rpc.Block
         if (this.lastBlock?.hash === blockHash) {
             block = this.lastBlock
         } else {
-            block = await this.rpc.call('eth_getBlockByHash', [blockHash, needsTransactions])
+            block = await this.rpc.call('eth_getBlockByHash', [blockHash, transactionsRequested(request)])
         }
         try {
-            let needsReceipts = needsTransactions && !!request?.fields?.transaction?.status
-            if (needsReceipts) {
-                return await this.mapBlockWithReceipts(block, needsLogs)
-            } else if (needsLogs) {
+            if (receiptsRequested(request)) {
+                return await this.mapBlockWithReceipts(block, logsRequested(request))
+            } else if (logsRequested(request)) {
                 let height = qty2Int(block.number)
                 let logs: rpc.Log[] = await this.fetchLogs(height, height)
                 for (let log of logs) {
@@ -198,14 +188,14 @@ export class EvmRpcDataSource implements HotDataSource<DataRequest, FullBlockDat
 function mapBlock(block: rpc.Block, logs: rpc.Log[]): FullBlockData {
     let header = mapBlockHeader(block)
     let items: FullBlockData['items'] = []
-    let txIndex = new Map<EvmTransaction['index'], EvmTransaction>()
+    let txIndex = new Map<EvmTransaction['transactionIndex'], EvmTransaction>()
 
     for (let rpcTx of block.transactions) {
         if (typeof rpcTx != 'object') {
             break
         }
         let transaction = mapTransaction(rpcTx)
-        txIndex.set(transaction.index, transaction)
+        txIndex.set(transaction.transactionIndex, transaction)
         items.push({kind: 'transaction', transaction})
     }
 
@@ -243,7 +233,7 @@ function mapBlockHeader(block: rpc.Block): EvmBlock {
         extraData: block.extraData,
         sha3Uncles: block.sha3Uncles,
         miner: block.miner,
-        nonce: BigInt(block.nonce),
+        nonce: block.nonce,
         size: BigInt(block.size),
         gasLimit: BigInt(block.gasLimit),
         gasUsed: BigInt(block.gasUsed),
@@ -252,33 +242,41 @@ function mapBlockHeader(block: rpc.Block): EvmBlock {
 }
 
 
-function mapTransaction(tx: rpc.Transaction): EvmTransaction {
-    let index = qty2Int(tx.transactionIndex)
-    return  {
-        id: formatId(qty2Int(tx.blockNumber), tx.blockHash, index),
-        index,
-        hash: tx.hash,
-        from: tx.from,
-        to: tx.to || undefined,
-        input: tx.input,
-        nonce: BigInt(tx.nonce),
-        v: BigInt(tx.v),
-        r: tx.r,
-        s: tx.s,
-        value: BigInt(tx.value),
-        gas: BigInt(tx.gas),
-        gasPrice: BigInt(tx.gasPrice)
+function mapTransaction(src: rpc.Transaction): EvmTransaction {
+    let transactionIndex = qty2Int(src.transactionIndex)
+    let tx: EvmTransaction = {
+        id: formatId(qty2Int(src.blockNumber), src.blockHash, transactionIndex),
+        transactionIndex,
+        hash: src.hash,
+        from: src.from,
+        to: src.to || undefined,
+        input: src.input,
+        nonce: qty2Int(src.nonce),
+        v: BigInt(src.v),
+        r: src.r,
+        s: src.s,
+        value: BigInt(src.value),
+        gas: BigInt(src.gas),
+        gasPrice: BigInt(src.gasPrice),
+        sighash: src.input.slice(0, 10)
     }
+    if (src.receipt) {
+        tx.gasUsed = BigInt(src.receipt.gasUsed)
+        tx.cumulativeGasUsed = BigInt(src.receipt.cumulativeGasUsed)
+        tx.effectiveGasPrice = BigInt(src.receipt.effectiveGasPrice)
+        tx.type = qty2Int(src.receipt.type)
+        tx.status = qty2Int(src.receipt.status)
+    }
+    return tx
 }
 
 
 function mapLog(log: rpc.Log): EvmLog {
-    let index = qty2Int(log.logIndex)
+    let logIndex = qty2Int(log.logIndex)
     return {
-        id: formatId(qty2Int(log.blockNumber), log.blockHash, index),
-        index,
+        id: formatId(qty2Int(log.blockNumber), log.blockHash, logIndex),
+        logIndex,
         transactionIndex: qty2Int(log.transactionIndex),
-        transactionHash: log.transactionHash,
         address: log.address,
         topics: log.topics,
         data: log.data
@@ -308,8 +306,29 @@ function addBlockContext(err: Error, block: rpc.Block): Error {
 }
 
 
-function qty2Int(qty: rpc.Qty): number {
-    let i = parseInt(qty)
+function qty2Int(qty: Qty): number {
+    let i = parseInt(qty, 16)
     assert(Number.isSafeInteger(i))
     return i
+}
+
+
+function logsRequested(req?: DataRequest): boolean {
+    return !!req?.logs?.length
+}
+
+
+function transactionsRequested(req?: DataRequest): boolean {
+    return !!req?.transactions?.length
+        || logsRequested(req) && !!req?.fields?.log?.transaction
+}
+
+
+function receiptsRequested(req?: DataRequest): boolean {
+    if (!transactionsRequested(req)) return false
+    let tx = req?.fields?.transaction
+    if (tx == null) return false
+    return !!(
+        tx.status || tx.type || tx.gasUsed || tx.cumulativeGasUsed || tx.effectiveGasPrice
+    )
 }

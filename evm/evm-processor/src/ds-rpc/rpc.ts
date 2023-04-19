@@ -1,10 +1,4 @@
-import {Bytes, Bytes32, EvmAddress} from '../interfaces/evm'
-
-/**
- * Hex QUANTITY string
- */
-export type Qty = string
-export type Bytes8 = string
+import {Bytes, Bytes20, Bytes32, Bytes8, Qty} from '../interfaces/evm'
 
 
 export interface Block {
@@ -17,7 +11,7 @@ export interface Block {
     transactionsRoot: Bytes
     stateRoot: Bytes32
     receiptsRoot: Bytes32
-    miner: EvmAddress
+    miner: Bytes20
     difficulty: Qty
     totalDifficulty: Qty
     extraData: Bytes
@@ -33,13 +27,13 @@ export interface Block {
 export interface Transaction {
     blockHash: Bytes32
     blockNumber: Qty
-    from: EvmAddress
+    from: Bytes20
     gas: Qty
     gasPrice: Qty
     hash: Bytes32
     input: Bytes
     nonce: Qty
-    to: EvmAddress | null
+    to: Bytes20 | null
     transactionIndex: Qty
     value: Qty
     v: Qty
@@ -51,7 +45,11 @@ export interface Transaction {
 
 export interface TransactionReceipt {
     transactionHash: Bytes32
+    cumulativeGasUsed: Qty
+    effectiveGasPrice: Qty
+    gasUsed: Qty
     logs: Log[]
+    type: Qty
     status: Qty
 }
 
@@ -62,7 +60,7 @@ export interface Log {
     transactionHash: Bytes32
     blockHash: Bytes32
     blockNumber: Bytes32
-    address: EvmAddress
+    address: Bytes20
     data: Bytes
     topics: Bytes32[]
 }

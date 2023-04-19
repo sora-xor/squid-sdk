@@ -1,4 +1,4 @@
-import {Bytes32, EvmAddress, EvmBlock, EvmLog, EvmTransaction} from './evm'
+import {Bytes20, Bytes32, EvmBlock, EvmLog, EvmTransaction} from './evm'
 
 
 type Simplify<T> = {
@@ -31,15 +31,14 @@ export const DEFAULT_FIELDS = {
         timestamp: true
     },
     log: {
+        logIndex: true,
         transactionIndex: true,
-        transactionHash: true,
-        index: true,
         address: true,
         topics: true,
         data: true
     },
     transaction: {
-        index: true,
+        transactionIndex: true,
         from: true,
         to: true,
         input: true,
@@ -140,14 +139,14 @@ export interface FullBlockData {
 
 export interface DataRequest {
     includeAllBlocks?: boolean
+    fields?: Fields
     logs?: LogItemRequest[]
     transactions?: TransactionItemRequest[]
-    fields?: Fields
 }
 
 
 export interface LogItemRequest {
-    address?: EvmAddress[]
+    address?: Bytes20[]
     filter?: EvmTopicSet
 }
 
@@ -156,7 +155,7 @@ export type EvmTopicSet = Bytes32[][]
 
 
 export interface TransactionItemRequest {
-    to?: EvmAddress[]
-    from?: EvmAddress[]
+    to?: Bytes20[]
+    from?: Bytes20[]
     sighash?: Bytes32[]
 }

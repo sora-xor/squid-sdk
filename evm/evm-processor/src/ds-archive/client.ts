@@ -1,7 +1,6 @@
-import {addErrorContext, maybeLast, withErrorContext} from '@subsquid/util-internal'
+import {addErrorContext, last, withErrorContext} from '@subsquid/util-internal'
 import {HttpClient} from '@subsquid/util-internal-http-client'
 import {ArchiveDataSource, BatchRequest, BatchResponse} from '@subsquid/util-internal-processor-tools'
-import assert from 'assert'
 import {DataRequest, DEFAULT_FIELDS, Fields, FullBlockData, FullLogItem} from '../interfaces/data'
 import {EvmBlock, EvmLog, EvmTransaction} from '../interfaces/evm'
 import {blockItemOrder, formatId} from '../util'
@@ -9,6 +8,8 @@ import * as gw from './gateway'
 
 
 export class EvmArchive implements ArchiveDataSource<DataRequest, FullBlockData> {
+    private lastKnownChainHeight?: number
+
     constructor(private http: HttpClient) {}
 
     async getFinalizedBatch(request: BatchRequest<DataRequest>): Promise<BatchResponse<FullBlockData>> {
@@ -16,86 +17,50 @@ export class EvmArchive implements ArchiveDataSource<DataRequest, FullBlockData>
             fromBlock: request.range.from,
             toBlock: request.range.to,
             includeAllBlocks: !!request.request.includeAllBlocks,
-            transactions: [],
-            logs: []
+            fields: withDefaultFields(request.request.fields),
+            transactions: request.request.transactions
         }
 
-        let fields = request.request.fields
-
-        let fieldSelection = toFieldSelection(fields)
-
-        request.request.transactions?.forEach(tx => {
-            q.transactions.push({
-                to: tx.to,
-                from: tx.from,
-                sighash: tx.sighash,
-                fieldSelection: {...fieldSelection, log: undefined}
-            })
-        })
-
-        request.request.logs?.forEach(log => {
-            q.logs.push({
+        q.logs = request.request.logs?.map(log => {
+            return {
                 address: log.address,
-                topics: log.filter || [],
-                fieldSelection: fields?.log?.transaction ? fieldSelection : {...fieldSelection, transaction: undefined}
-            })
+                topic0: log.filter?.[0]
+            }
         })
 
         let res = await this.query(q)
 
-        let lastBlock = res.nextBlock - 1
-
         let batch: BatchResponse<FullBlockData> = {
-            range: {from: request.range.from, to: lastBlock},
+            range: {from: request.range.from, to: last(res.blocks).header.number},
             blocks: [],
-            chainHeight: res.archiveHeight
+            chainHeight: res.chainHeight
         }
 
-        for (let bb of res.data) {
-            for (let block of bb) {
-                batch.blocks.push(
-                    tryMapGatewayBlock(block)
-                )
-            }
-        }
-
-        batch.blocks.sort((a, b) => a.header.height - b.header.height)
-
-        if (maybeLast(batch.blocks)?.header.height !== batch.range.to) {
-            // Always include last block of a batch range
-            let lastBlockHeader = await this.fetchBlockHeader(batch.range.to, fieldSelection)
-                .catch(withErrorContext({blockHeight: batch.range.to}))
-
-            batch.blocks.push({
-                header: lastBlockHeader,
-                items: []
-            })
+        for (let gwb of res.blocks) {
+            batch.blocks.push(
+                tryMapGatewayBlock(gwb)
+            )
         }
 
         return batch
     }
 
-    private async fetchBlockHeader(height: number, fieldSelection: gw.FieldSelection): Promise<EvmBlock> {
-        let res = await this.query({
-            fromBlock: height,
-            toBlock: height,
-            includeAllBlocks: true,
-            transactions: [{
-                fieldSelection
-            }],
-            logs: []
-        })
-        assert(res.data.length == 1)
-        assert(res.data[0].length == 1)
-        return mapGatewayBlockHeader(res.data[0][0].block)
-    }
+    private async query(q: gw.BatchRequest): Promise<{blocks: gw.BlockData[], chainHeight: number}> {
+        let worker: string = await this.http.get(`/${q.fromBlock}/worker`)
 
-    private query(q: gw.BatchRequest): Promise<gw.BatchResponse> {
-        return this.http.post('/query', {json: q}).catch(withErrorContext({archiveQuery: q}))
+        let blocks: gw.BlockData[] = await this.http.post(worker, {json: q})
+            .catch(withErrorContext({archiveQuery: q}))
+
+        let chainHeight = this.lastKnownChainHeight && last(blocks).header.number < this.lastKnownChainHeight
+            ? this.lastKnownChainHeight
+            : await this.getFinalizedHeight()
+
+        return {blocks, chainHeight}
     }
 
     async getFinalizedHeight(): Promise<number> {
-        let {height}: {height: number} = await this.http.get('/height')
+        let height = await this.http.get('/height').then(s => parseInt(s))
+        this.lastKnownChainHeight = height
         return height
     }
 }
@@ -106,26 +71,26 @@ function tryMapGatewayBlock(src: gw.BlockData): FullBlockData {
         return mapGatewayBlock(src)
     } catch (e: any) {
         throw addErrorContext(e, {
-            blockHeight: src.block.number,
-            blockHash: src.block.hash,
+            blockHeight: src.header.number,
+            blockHash: src.header.hash,
         })
     }
 }
 
 
 function mapGatewayBlock(src: gw.BlockData): FullBlockData {
-    let header = mapGatewayBlockHeader(src.block)
+    let header = mapGatewayBlockHeader(src.header)
 
     let items: FullBlockData['items'] = []
-    let txIndex = new Map<EvmTransaction['index'], EvmTransaction>()
+    let txIndex = new Map<EvmTransaction['transactionIndex'], EvmTransaction>()
 
-    for (let gtx of src.transactions) {
+    for (let gtx of src.transactions || []) {
         let transaction = mapGatewayTransaction(header.height, header.hash, gtx)
         items.push({kind: 'transaction', transaction})
-        txIndex.set(transaction.index, transaction)
+        txIndex.set(transaction.transactionIndex, transaction)
     }
 
-    for (let gl of src.logs) {
+    for (let gl of src.logs || []) {
         let log = mapGatewayLog(header.height, header.hash, gl)
         let item: Partial<FullLogItem> = {kind: 'log', log}
         let transaction = txIndex.get(log.transactionIndex)
@@ -155,9 +120,8 @@ function mapGatewayBlockHeader(src: gw.Block): EvmBlock {
             case 'hash':
                 break
             case 'timestamp':
-                header.timestamp = Number(src.timestamp)
+                header.timestamp = src.timestamp
                 break
-            case 'nonce':
             case 'difficulty':
             case 'totalDifficulty':
             case 'size':
@@ -177,7 +141,7 @@ function mapGatewayBlockHeader(src: gw.Block): EvmBlock {
 
 function mapGatewayTransaction(blockHeight: number, blockHash: string, src: gw.Transaction): EvmTransaction {
     let tx: Partial<EvmTransaction> = {
-        id: formatId(blockHeight, blockHash, src.index)
+        id: formatId(blockHeight, blockHash, src.transactionIndex)
     }
 
     let key: keyof gw.Transaction
@@ -193,16 +157,16 @@ function mapGatewayTransaction(blockHeight: number, blockHash: string, src: gw.T
                 break
             case 'gas':
             case 'gasPrice':
-            case 'nonce':
             case 'value':
             case 'v':
             case 'maxFeePerGas':
             case 'maxPriorityFeePerGas':
                 tx[key] = BigInt(src[key]!)
                 break
-            case 'index':
+            case 'transactionIndex':
             case 'chainId':
             case 'yParity':
+            case 'nonce':
                 tx[key] = src[key]
                 break
         }
@@ -214,14 +178,13 @@ function mapGatewayTransaction(blockHeight: number, blockHash: string, src: gw.T
 
 function mapGatewayLog(blockHeight: number, blockHash: string, src: gw.Log): EvmLog {
     let log: Partial<EvmLog> = {
-        id: formatId(blockHeight, blockHash, src.index),
-        index: src.index
+        id: formatId(blockHeight, blockHash, src.logIndex),
+        logIndex: src.logIndex
     }
 
     let key: keyof gw.Log
     for (key in src) {
         switch(key) {
-            case 'transactionHash':
             case 'address':
             case 'data':
                 log[key] = src[key]
@@ -239,40 +202,39 @@ function mapGatewayLog(blockHeight: number, blockHash: string, src: gw.Log): Evm
 }
 
 
-function toFieldSelection(fields?: Fields): gw.FieldSelection {
-    let {transaction, ...logFields} = fields?.log || {}
+function withDefaultFields(fields?: Fields): gw.Fields {
+    let {height, ...blockFields} = mergeDefaultFields(DEFAULT_FIELDS.block, fields?.block)
     return  {
         block: {
-            ...mergeDefaultFields(DEFAULT_FIELDS.block, fields?.block),
+            ...blockFields,
+            number: true,
             hash: true,
-            number: true
+            parentHash: true
         },
         transaction: {
             ...mergeDefaultFields(DEFAULT_FIELDS.transaction, fields?.transaction),
-            index: true
+            transactionIndex: true
         },
         log: {
-            ...mergeDefaultFields(DEFAULT_FIELDS.log, logFields),
-            index: true,
+            ...mergeDefaultFields(DEFAULT_FIELDS.log, fields?.log),
+            logIndex: true,
             transactionIndex: true
         }
     }
 }
 
 
-type Selector<Props extends string> = {
-    [K in Props]?: boolean
-}
-
-
-function mergeDefaultFields<P extends string>(defaults: Selector<P>, selection?: Selector<P>): Selector<P> {
-    let result: Selector<P> = {...defaults}
+function mergeDefaultFields<Props extends string>(
+    defaults: gw.Selector<Props>,
+    selection?: gw.Selector<Props>
+): gw.Selector<Props> {
+    let result: gw.Selector<Props> = {...defaults}
     for (let key in selection) {
         if (selection[key] != null) {
             if (selection[key]) {
                 result[key] = true
             } else {
-                result[key] = undefined
+                delete result[key]
             }
         }
     }

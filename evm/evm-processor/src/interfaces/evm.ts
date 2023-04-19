@@ -1,6 +1,8 @@
 export type Bytes = string
+export type Bytes8 = string
+export type Bytes20 = string
 export type Bytes32 = string
-export type EvmAddress = string
+export type Qty = string
 
 
 export interface EvmBlock {
@@ -8,53 +10,57 @@ export interface EvmBlock {
     height: number
     hash: Bytes32
     parentHash: Bytes32
-    timestamp: number
-    size: bigint
-    extraData: Bytes
+    nonce?: Bytes8
+    sha3Uncles: Bytes32
     logsBloom: Bytes
     transactionsRoot: Bytes32
     stateRoot: Bytes32
     receiptsRoot: Bytes32
-    miner: EvmAddress
-    sha3Uncles: Bytes32
-    nonce: bigint
-    gasLimit: bigint
-    gasUsed: bigint
+    mixHash?: Bytes
+    miner: Bytes20
     difficulty?: bigint
     totalDifficulty?: bigint
+    extraData: Bytes
+    size: bigint
+    gasLimit: bigint
+    gasUsed: bigint
+    timestamp: number
     baseFeePerGas?: bigint
-    mixHash?: Bytes32
 }
 
 
 export interface EvmTransaction {
     id: string
-    index: number
-    hash: Bytes32
-    from: EvmAddress
-    to?: EvmAddress
-    input: Bytes
-    nonce: bigint
-    v: bigint
-    r: string
-    s: string
-    value: bigint
+    from: Bytes20
     gas: bigint
-    gasPrice?: bigint
-    maxPriorityFeePerGas?: bigint
+    gasPrice: bigint
     maxFeePerGas?: bigint
+    maxPriorityFeePerGas?: bigint
+    hash: Bytes32
+    input: Bytes
+    nonce: number
+    to?: Bytes20
+    transactionIndex: number
+    value: bigint
+    v?: bigint
+    r?: Bytes32
+    s?: Bytes32
     yParity?: number
-    status?: number
     chainId?: number
+    sighash: Bytes
+    gasUsed?: bigint
+    cumulativeGasUsed?: bigint
+    effectiveGasPrice?: bigint
+    type?: number
+    status?: number
 }
 
 
 export interface EvmLog {
     id: string
-    index: number
+    logIndex: number
     transactionIndex: number
-    transactionHash: string
-    address: EvmAddress
-    topics: Bytes32[]
+    address: Bytes20
     data: Bytes
+    topics: Bytes32[]
 }

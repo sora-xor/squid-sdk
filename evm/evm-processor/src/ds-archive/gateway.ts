@@ -1,108 +1,101 @@
+import {Bytes, Bytes20, Bytes32, Bytes8, Qty} from '../interfaces/evm'
+
 
 export interface BatchRequest {
     fromBlock: number
     toBlock?: number
-    includeAllBlocks: boolean
-    logs: LogRequest[]
-    transactions: TransactionRequest[]
-}
-
-
-export interface BatchResponse {
-    data: BlockData[][]
-    nextBlock: number
-    archiveHeight: number
+    includeAllBlocks?: boolean
+    fields?: Fields
+    logs?: LogRequest[]
+    transactions?: TransactionRequest[]
 }
 
 
 export interface LogRequest {
-    address?: string[]
-    topics: string[][]
-    fieldSelection: FieldSelection
+    address?: Bytes20[]
+    topic0?: Bytes32[]
 }
 
 
 export interface TransactionRequest {
-    to?: string[]
-    from?: string[]
-    sighash?: string[]
-    fieldSelection: FieldSelection
+    to?: Bytes20[]
+    from?: Bytes20[]
+    sighash?: Bytes[]
 }
 
 
-export interface FieldSelection {
-    block?: BlockFieldSelection
-    transaction?: TransactionFieldSelection
-    log?: LogFieldSelection
+export interface Fields {
+    block?: Selector<keyof Block>
+    transaction?: Selector<keyof Transaction>
+    log?: Selector<keyof Log | 'transaction'>
 }
 
 
-export type BlockFieldSelection = {[P in keyof Block]?: boolean}
-
-
-export type LogFieldSelection = {[P in keyof Log]?: boolean}
-
-
-export type TransactionFieldSelection = {[P in keyof Transaction]?: boolean}
+export type Selector<Props extends string> = {
+    [P in Props]?: boolean
+}
 
 
 export interface Block {
     number: number
-    hash: string
-    parentHash: string
-    nonce?: string
-    sha3Uncles: string
-    logsBloom: string
-    transactionsRoot: string
-    stateRoot: string
-    receiptsRoot: string
-    miner: string
-    difficulty?: string
-    totalDifficulty?: string
-    extraData: string
-    size: string
-    gasLimit: string
-    gasUsed: string
-    timestamp: string
-    mixHash?: string
-    baseFeePerGas?: string
+    hash: Bytes32
+    parentHash: Bytes32
+    nonce?: Bytes8
+    sha3Uncles: Bytes32
+    logsBloom: Bytes
+    transactionsRoot: Bytes32
+    stateRoot: Bytes32
+    receiptsRoot: Bytes32
+    mixHash?: Bytes
+    miner: Bytes20
+    difficulty?: Qty
+    totalDifficulty?: Qty
+    extraData: Bytes
+    size: Qty
+    gasLimit: Qty
+    gasUsed: Qty
+    timestamp: number
+    baseFeePerGas?: Qty
 }
 
 
 export interface Transaction {
-    from: string
-    gas: string
-    gasPrice?: string
-    hash: string
-    input: string
-    nonce: string
-    to?: string
-    index: number
-    value: bigint
-    type: number
-    chainId?: number
-    v: string
-    r: string
-    s: string
-    maxPriorityFeePerGas?: string
-    maxFeePerGas?: string
+    from: Bytes20
+    gas: Qty
+    gasPrice: Qty
+    maxFeePerGas?: Qty
+    maxPriorityFeePerGas?: Qty
+    hash: Bytes32
+    input: Bytes
+    nonce: number
+    to?: Bytes20
+    transactionIndex: number
+    value: Qty
+    v?: Qty
+    r?: Bytes32
+    s?: Bytes32
     yParity?: number
+    chainId?: number
+    sighash: Bytes
+    gasUsed?: Qty
+    cumulativeGasUsed?: Qty
+    effectiveGasPrice?: Qty
+    type?: number
+    status?: number
 }
 
 
 export interface Log {
+    logIndex: number
+    transactionIndex: number
     address: string
     data: string
-    index: number
-    removed: boolean
     topics: string[]
-    transactionIndex: number
-    transactionHash: string
 }
 
 
 export interface BlockData {
-    block: Block
+    header: Block
     logs: Log[]
     transactions: Transaction[]
 }

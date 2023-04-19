@@ -9,14 +9,13 @@ const CONTRACT = '0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48'
 
 const processor = new EvmBatchProcessor()
     .setDataSource({
-        archive: 'https://eth.archive.subsquid.io',
+        archive: 'https://v2.archive.subsquid.io/network/ethereum-mainnet',
         chain: 'https://rpc.ankr.com/eth'
     })
     .addLog({
         address: CONTRACT,
         filter: [[erc20.events.Transfer.topic]],
     })
-    .setBlockRange({from: 16_900_000})
 
 
 processor.run(new TypeormDatabase({supportHotBlocks: true}), async ctx => {
@@ -30,7 +29,7 @@ processor.run(new TypeormDatabase({supportHotBlocks: true}), async ctx => {
                     id: item.log.id,
                     blockNumber: block.header.height,
                     timestamp: new Date(block.header.timestamp),
-                    txHash: item.log.transactionHash,
+                    txHash: '0x',
                     from,
                     to,
                     amount: value.toBigInt()

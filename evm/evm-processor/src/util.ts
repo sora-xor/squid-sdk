@@ -26,13 +26,13 @@ export function formatId(height: number, hash: string, index?: number): string {
 
 export function blockItemOrder(a: BlockItem, b: BlockItem): number {
     if (a.kind == 'log' && b.kind == 'log') {
-        return a.log.index - b.log.index
+        return a.log.logIndex - b.log.logIndex
     } else if (a.kind == 'transaction' && b.kind == 'transaction') {
-        return a.transaction.index - b.transaction.index
+        return a.transaction.transactionIndex - b.transaction.transactionIndex
     } else if (a.kind == 'log' && b.kind == 'transaction') {
-        return a.log.transactionIndex - b.transaction.index || -1 // transaction after logs
+        return a.log.transactionIndex - b.transaction.transactionIndex || -1 // transaction after logs
     } else if (a.kind == 'transaction' && b.kind == 'log') {
-        return a.transaction.index - b.log.transactionIndex || 1
+        return a.transaction.transactionIndex - b.log.transactionIndex || 1
     } else {
         assert(false)
     }
