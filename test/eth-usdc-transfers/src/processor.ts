@@ -16,6 +16,9 @@ const processor = new EvmBatchProcessor()
         address: CONTRACT,
         filter: [[erc20.events.Transfer.topic]],
     })
+    .setFields({
+        log: {transactionHash: false}
+    })
 
 
 processor.run(new TypeormDatabase({supportHotBlocks: true}), async ctx => {
