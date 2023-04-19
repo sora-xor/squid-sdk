@@ -60,6 +60,7 @@ export interface EvmLog {
     id: string
     logIndex: number
     transactionIndex: number
+    transactionHash: Bytes32
     address: Bytes20
     data: Bytes
     topics: Bytes32[]

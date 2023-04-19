@@ -120,7 +120,7 @@ function mapGatewayBlockHeader(src: gw.Block): EvmBlock {
             case 'hash':
                 break
             case 'timestamp':
-                header.timestamp = src.timestamp
+                header.timestamp = src.timestamp * 1000
                 break
             case 'difficulty':
             case 'totalDifficulty':

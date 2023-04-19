@@ -225,7 +225,7 @@ function mapBlockHeader(block: rpc.Block): EvmBlock {
         height,
         hash: block.hash,
         parentHash: block.parentHash,
-        timestamp: qty2Int(block.timestamp),
+        timestamp: qty2Int(block.timestamp) * 1000,
         stateRoot: block.stateRoot,
         transactionsRoot: block.transactionsRoot,
         receiptsRoot: block.receiptsRoot,
@@ -277,6 +277,7 @@ function mapLog(log: rpc.Log): EvmLog {
         id: formatId(qty2Int(log.blockNumber), log.blockHash, logIndex),
         logIndex,
         transactionIndex: qty2Int(log.transactionIndex),
+        transactionHash: log.transactionHash,
         address: log.address,
         topics: log.topics,
         data: log.data

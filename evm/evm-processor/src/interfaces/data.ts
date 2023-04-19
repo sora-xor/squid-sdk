@@ -33,6 +33,7 @@ export const DEFAULT_FIELDS = {
     log: {
         logIndex: true,
         transactionIndex: true,
+        transactionHash: true,
         address: true,
         topics: true,
         data: true
