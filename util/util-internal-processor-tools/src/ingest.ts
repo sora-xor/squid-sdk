@@ -11,20 +11,19 @@ export interface HashAndHeight {
 }
 
 
-export interface BaseBlockHeader {
+export interface BlockHeader {
     height: number
     hash: string
     parentHash: string
 }
 
 
-export interface BaseBlock {
-    header: BaseBlockHeader
-    items: object[]
+export interface Block {
+    header: BlockHeader
 }
 
 
-export interface BatchResponse<B> {
+export interface BatchResponse<B extends Block = Block> {
     /**
      * This is the range of scanned blocks
      */
@@ -34,7 +33,7 @@ export interface BatchResponse<B> {
 }
 
 
-export interface DataBatch<B> extends BatchResponse<B> {
+export interface DataBatch<B extends Block = Block> extends BatchResponse<B> {
     fetchStartTime: bigint
     fetchEndTime: bigint
     finalizedHead?: HashAndHeight
@@ -42,44 +41,44 @@ export interface DataBatch<B> extends BatchResponse<B> {
 }
 
 
-export interface HotDataBatch<B> extends DataBatch<B> {
+export interface HotDataBatch extends DataBatch {
     finalizedHead: HashAndHeight
     baseHead: HashAndHeight
 }
 
 
-export interface ArchiveDataSource<R, B> {
-    getFinalizedBatch(request: BatchRequest<R>): Promise<BatchResponse<B>>
+export interface ArchiveDataSource<R> {
+    getFinalizedBatch(request: BatchRequest<R>): Promise<BatchResponse>
     getFinalizedHeight(): Promise<number>
 }
 
 
-export interface HotDataSource<R, B> extends ArchiveDataSource<R, B> {
-    getBlock(blockHash: string, request?: R): Promise<B>
+export interface HotDataSource<R> extends ArchiveDataSource<R> {
+    getBlock(blockHash: string, request?: R): Promise<Block>
     getBlockHash(height: number): Promise<string>
     getBestHead(): Promise<HashAndHeight>
     getFinalizedHead(): Promise<HashAndHeight>
 }
 
 
-export interface ArchiveIngestOptions<R, B> {
+export interface ArchiveIngestOptions<R> {
     requests: BatchRequest<R>[]
-    archive: ArchiveDataSource<R, B>
+    archive: ArchiveDataSource<R>
     pollInterval?: number
     maxBufferedBatches?: number
 }
 
 
-export class ArchiveIngest<R, B extends BaseBlock> {
+export class ArchiveIngest<R> {
     private requests: BatchRequest<R>[]
-    private src: ArchiveDataSource<R, B>
+    private src: ArchiveDataSource<R>
     private pollInterval: number
-    private queue: Promise<DataBatch<B> | null>[] = []
+    private queue: Promise<DataBatch | null>[] = []
     private chainHeight = -1
     private fetching = false
     private maxBufferedBatches: number
 
-    constructor(options: ArchiveIngestOptions<R, B>) {
+    constructor(options: ArchiveIngestOptions<R>) {
         this.requests = options.requests.slice()
         this.src = options.archive
         this.pollInterval = options.pollInterval ?? 2000
@@ -91,7 +90,7 @@ export class ArchiveIngest<R, B extends BaseBlock> {
     }
 
     @def
-    async *getBlocks(): AsyncIterable<DataBatch<B>> {
+    async *getBlocks(): AsyncIterable<DataBatch> {
         this.chainHeight = await this.src.getFinalizedHeight()
         while (true) {
             if (!this.fetching) {
@@ -115,7 +114,7 @@ export class ArchiveIngest<R, B extends BaseBlock> {
 
         let req = this.requests[0]
 
-        let promise: Promise<DataBatch<B> | null> = this.waitForHeight(req.range.from).then(async ok => {
+        let promise: Promise<DataBatch | null> = this.waitForHeight(req.range.from).then(async ok => {
             if (!ok) return null
 
             let fetchStartTime = process.hrtime.bigint()
@@ -170,21 +169,21 @@ export class ArchiveIngest<R, B extends BaseBlock> {
 }
 
 
-export interface HotIngestOptions<R, B> {
-    src: HotDataSource<R, B>
+export interface HotIngestOptions<R> {
+    src: HotDataSource<R>
     state: HotDatabaseState
     requests: BatchRequest<R>[]
     pollInterval?: number
 }
 
 
-export class HotIngest<R, B extends BaseBlock> {
+export class HotIngest<R> {
     private requests: BatchRequest<R>[]
     private chain: HashAndHeight[]
-    private src: HotDataSource<R, B>
+    private src: HotDataSource<R>
     private pollInterval: number
 
-    constructor(options: HotIngestOptions<R, B>) {
+    constructor(options: HotIngestOptions<R>) {
         this.requests = options.requests
         this.chain = [options.state, ...options.state.top]
         this.src = options.src
@@ -216,7 +215,7 @@ export class HotIngest<R, B extends BaseBlock> {
     }
 
     @def
-    async *getItems(): AsyncIterable<HotDataBatch<B>> {
+    async *getItems(): AsyncIterable<HotDataBatch> {
         while (this.waitsForBlocks()) {
             let fetchStartTime = process.hrtime.bigint()
             let newBlocks = await this.pollNewBlocks()
@@ -242,7 +241,7 @@ export class HotIngest<R, B extends BaseBlock> {
         }
     }
 
-    private async pollNewBlocks(): Promise<B[]> {
+    private async pollNewBlocks(): Promise<Block[]> {
         let finalizedHead = await this.src.getFinalizedHead()
         let best = await this.src.getBestHead()
 
@@ -266,7 +265,7 @@ export class HotIngest<R, B extends BaseBlock> {
             }
         }
 
-        let newBlocks: B[] = []
+        let newBlocks: Block[] = []
 
         while (last(this.chain).height < best.height) {
             let item = await this.getBlock(best)
@@ -293,7 +292,7 @@ export class HotIngest<R, B extends BaseBlock> {
         return newBlocks
     }
 
-    private async getBlock(ref: HashAndHeight): Promise<{block: B, parent: HashAndHeight}> {
+    private async getBlock(ref: HashAndHeight): Promise<{block: Block, parent: HashAndHeight}> {
         let request = this.getRequestAtHeight(ref.height)
         let block = await this.src.getBlock(ref.hash, request)
         return {

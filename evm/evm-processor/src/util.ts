@@ -1,6 +1,3 @@
-import assert from 'assert'
-import type {BlockItem} from './interfaces/data'
-
 /**
  * Formats the event id into a fixed-length string. When formatted the natural string ordering
  * is the same as the ordering
@@ -21,21 +18,6 @@ export function formatId(height: number, hash: string, index?: number): string {
             ? _hash.padEnd(5, '0')
             : _hash.slice(0, 5)
     return `${blockPart}${indexPart}-${shortHash}`
-}
-
-
-export function blockItemOrder(a: BlockItem, b: BlockItem): number {
-    if (a.kind == 'log' && b.kind == 'log') {
-        return a.log.logIndex - b.log.logIndex
-    } else if (a.kind == 'transaction' && b.kind == 'transaction') {
-        return a.transaction.transactionIndex - b.transaction.transactionIndex
-    } else if (a.kind == 'log' && b.kind == 'transaction') {
-        return a.log.transactionIndex - b.transaction.transactionIndex || -1 // transaction after logs
-    } else if (a.kind == 'transaction' && b.kind == 'log') {
-        return a.transaction.transactionIndex - b.log.transactionIndex || 1
-    } else {
-        assert(false)
-    }
 }
 
 

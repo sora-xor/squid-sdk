@@ -3,17 +3,17 @@ import {assertNotNull, def, last, maybeLast} from '@subsquid/util-internal'
 import assert from 'assert'
 import {applyRangeBound, BatchRequest} from './batch'
 import {Database, HashAndHeight, HotDatabaseState} from './database'
-import {ArchiveDataSource, ArchiveIngest, BaseBlock, BatchResponse, DataBatch, HotDataSource, HotIngest} from './ingest'
+import {ArchiveDataSource, ArchiveIngest, Block, BatchResponse, DataBatch, HotDataSource, HotIngest} from './ingest'
 import {PrometheusServer} from './prometheus'
 import {rangeEnd} from './range'
 import {RunnerMetrics} from './runner-metrics'
 import {formatHead, getItemsCount} from './util'
 
 
-export interface RunnerConfig<R, B, S> {
-    archive?: ArchiveDataSource<R, B>
+export interface RunnerConfig<R, S> {
+    archive?: ArchiveDataSource<R>
     archivePollInterval?: number
-    hotDataSource?: HotDataSource<R, B>
+    hotDataSource?: HotDataSource<R>
     hotDataSourcePollInterval?: number
     requests: BatchRequest<R>[]
     database: Database<S>
@@ -22,12 +22,12 @@ export interface RunnerConfig<R, B, S> {
 }
 
 
-export class Runner<R, B extends BaseBlock, S> {
+export class Runner<R, S> {
     private metrics: RunnerMetrics
     private statusReportTimer?: any
     private hasStatusNews = false
 
-    constructor(protected config: RunnerConfig<R, B, S>) {
+    constructor(protected config: RunnerConfig<R, S>) {
         this.metrics = new RunnerMetrics(this.config.requests)
         this.config.prometheus.addRunnerMetrics(this.metrics)
     }
@@ -87,7 +87,7 @@ export class Runner<R, B extends BaseBlock, S> {
 
     private async processFinalizedBlocks(options: {
         state: HotDatabaseState,
-        src: ArchiveDataSource<R, B>
+        src: ArchiveDataSource<R>
         srcPollInterval?: number
         shouldStopOnHeight?: (height: number) => Promise<boolean>
     }): Promise<HotDatabaseState> {
@@ -105,7 +105,7 @@ export class Runner<R, B extends BaseBlock, S> {
         }
 
         let minimumCommitHeight = state.height + state.top.length
-        let prevBatch: DataBatch<B> | undefined
+        let prevBatch: DataBatch | undefined
 
         for await (let batch of ingest.getBlocks()) {
             if (prevBatch) {
@@ -132,7 +132,7 @@ export class Runner<R, B extends BaseBlock, S> {
         return state
     }
 
-    private async handleFinalizedBlocks(state: HotDatabaseState, batch: DataBatch<B>): Promise<HotDatabaseState> {
+    private async handleFinalizedBlocks(state: HotDatabaseState, batch: DataBatch): Promise<HotDatabaseState> {
         assert(state.height < batch.range.from)
 
         let lastBlock = maybeLast(batch.blocks)
@@ -205,9 +205,9 @@ export class Runner<R, B extends BaseBlock, S> {
         }
     }
 
-    async processBatch(store: S, batch: BatchResponse<B>): Promise<void> {}
+    async processBatch(store: S, batch: BatchResponse): Promise<void> {}
 
-    private async withProgressMetrics<R>(batch: DataBatch<B>, handler: () => R): Promise<R> {
+    private async withProgressMetrics<R>(batch: DataBatch, handler: () => R): Promise<R> {
         this.metrics.setChainHeight(batch.chainHeight)
 
         let mappingStartTime = process.hrtime.bigint()

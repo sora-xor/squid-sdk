@@ -13,31 +13,30 @@ const processor = new EvmBatchProcessor()
         chain: 'https://rpc.ankr.com/eth'
     })
     .addLog({
-        address: CONTRACT,
-        filter: [[erc20.events.Transfer.topic]],
+        address: [CONTRACT],
+        topic0: [erc20.events.Transfer.topic],
     })
     .setFields({
         log: {transactionHash: false}
     })
+    .setBlockRange({from: 15_000_000})
 
 
 processor.run(new TypeormDatabase({supportHotBlocks: true}), async ctx => {
     let transfers: Transfer[] = []
 
     for (let block of ctx.blocks) {
-        for (let item of block.items) {
-            if (item.kind == 'log' && item.log.address === CONTRACT && item.log.topics[0] == erc20.events.Transfer.topic) {
-                let {from, to, value} = erc20.events.Transfer.decode(item.log)
-                transfers.push(new Transfer({
-                    id: item.log.id,
-                    blockNumber: block.header.height,
-                    timestamp: new Date(block.header.timestamp),
-                    txHash: '0x',
-                    from,
-                    to,
-                    amount: value.toBigInt()
-                }))
-            }
+        for (let log of block.logs) {
+            let {from, to, value} = erc20.events.Transfer.decode(log)
+            transfers.push(new Transfer({
+                id: `${block.header.height}-${log.logIndex}`,
+                blockNumber: block.header.height,
+                timestamp: new Date(block.header.timestamp),
+                txHash: '0x',
+                from,
+                to,
+                amount: value.toBigInt()
+            }))
         }
     }
 

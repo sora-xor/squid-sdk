@@ -30,10 +30,15 @@ export function timeInterval(seconds: number): string {
 }
 
 
-export function getItemsCount(blocks: {items: unknown[]}[]): number {
+export function getItemsCount(blocks: any[]): number {
     let count = 0
-    for (let i = 0; i < blocks.length; i++) {
-        count += blocks[i].items.length
+    for (let block of blocks) {
+        for (let key in block) {
+            let val = block[key]
+            if (Array.isArray(val)) {
+                count += val.length
+            }
+        }
     }
     return count
 }

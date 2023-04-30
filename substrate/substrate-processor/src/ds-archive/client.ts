@@ -10,16 +10,16 @@ import {printGqlArguments} from './gql'
 import {mapGatewayBlock} from './mapping'
 
 
-export class SubstrateArchive implements ArchiveDataSource<DataRequest, BlockDataP> {
+export class SubstrateArchive implements ArchiveDataSource<DataRequest> {
     constructor(private http: HttpClient) {}
 
-    async getFinalizedBatch(request: BatchRequest<DataRequest>): Promise<BatchResponse<BlockDataP>> {
+    async getFinalizedBatch(request: BatchRequest<DataRequest>): Promise<BatchResponse> {
         let ctx = {}
         let {blocks, chainHeight, nextBlock} = await this
             .fetchBatch(request, ctx)
             .catch(withErrorContext(ctx))
 
-        let batch: BatchResponse<BlockDataP> = {
+        let batch: BatchResponse = {
             range: {from: request.range.from, to: nextBlock - 1},
             blocks,
             chainHeight

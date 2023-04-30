@@ -15,7 +15,8 @@ import {RpcClient} from '@subsquid/util-internal-resilient-rpc'
 import {EvmArchive} from './ds-archive/client'
 import {EvmRpcDataSource} from './ds-rpc/client'
 import {Chain} from './interfaces/chain'
-import {BlockData, DataRequest, EvmTopicSet, Fields} from './interfaces/data'
+import {BlockData, FieldSelection} from './interfaces/data'
+import {DataRequest, LogRequest, StateDiffRequest, TraceRequest, TransactionRequest} from './interfaces/data-request'
 
 
 export type DataSource = ArchiveDataSource | ChainDataSource
@@ -42,15 +43,7 @@ interface ChainDataSource {
 }
 
 
-export interface LogOptions {
-    /**
-     * Address of the emitting contract
-     */
-    address?: string | string[]
-    /**
-     * EVM topic filter as defined by https://docs.ethers.io/v5/concepts/events/#events--filters
-     */
-    filter?: EvmTopicSet
+interface BlockRange {
     /**
      * Block range
      */
@@ -58,27 +51,7 @@ export interface LogOptions {
 }
 
 
-export interface TransactionOptions {
-    /**
-     * Address of the called contract
-     */
-    to?: string | string[]
-    /**
-     * Address of the tx author
-     */
-    from?: string | string[]
-    /**
-     * Sighash of the invoked contract method
-     */
-    sighash?: string | string[]
-    /**
-     * Block range
-     */
-    range?: Range
-}
-
-
-export interface DataHandlerContext<Store, F extends Fields = {}> {
+export interface DataHandlerContext<Store, F extends FieldSelection = {}> {
     _chain: Chain
     log: Logger
     store: Store
@@ -93,11 +66,11 @@ export type EvmBatchProcessorFields<T> = T extends EvmBatchProcessor<infer F> ? 
 /**
  * Provides methods to configure and launch data processing.
  */
-export class EvmBatchProcessor<F extends Fields = {}> {
+export class EvmBatchProcessor<F extends FieldSelection = {}> {
     private requests: BatchRequest<DataRequest>[] = []
     private src?: DataSource
     private blockRange?: Range
-    private fields?: Fields
+    private fields?: FieldSelection
     private running = false
 
     private add(request: DataRequest, range?: Range): void {
@@ -110,31 +83,40 @@ export class EvmBatchProcessor<F extends Fields = {}> {
     /**
      * Configure a set of fetched fields
      */
-    setFields<T extends Fields>(fields: T): EvmBatchProcessor<T> {
+    setFields<T extends FieldSelection>(fields: T): EvmBatchProcessor<T> {
         this.assertNotRunning()
         this.fields = fields
         return this as any
     }
 
-    addLog(options: LogOptions): this {
+    addLog(options: LogRequest & BlockRange): this {
         this.assertNotRunning()
         this.add({
-            logs: [{
-                address: toRequestList(options.address),
-                filter: options.filter?.length ? options.filter : undefined
-            }]
+            logs: [mapRequest(options)]
         }, options.range)
         return this
     }
 
-    addTransaction(options: TransactionOptions): this {
+    addTransaction(options: TransactionRequest & BlockRange): this {
         this.assertNotRunning()
         this.add({
-            transactions: [{
-                from: toRequestList(options.from),
-                to: toRequestList(options.to),
-                sighash: toRequestList(options.sighash)
-            }]
+            transactions: [mapRequest(options)]
+        }, options.range)
+        return this
+    }
+
+    addTrace(options: TraceRequest & BlockRange): this {
+        this.assertNotRunning()
+        this.add({
+            traces: [mapRequest(options)]
+        }, options.range)
+        return this
+    }
+
+    addStateDiff(options: StateDiffRequest & BlockRange): this {
+        this.assertNotRunning()
+        this.add({
+            stateDiffs: [mapRequest(options)]
         }, options.range)
         return this
     }
@@ -279,8 +261,10 @@ export class EvmBatchProcessor<F extends Fields = {}> {
             if (a.includeAllBlocks || b.includeAllBlocks) {
                 res.includeAllBlocks = true
             }
-            res.logs = concatRequestLists(a.logs, b.logs)
             res.transactions = concatRequestLists(a.transactions, b.transactions)
+            res.logs = concatRequestLists(a.logs, b.logs)
+            res.traces = concatRequestLists(a.traces, b.traces)
+            res.stateDiffs = concatRequestLists(a.stateDiffs, b.stateDiffs)
             return res
         })
 
@@ -342,13 +326,15 @@ export class EvmBatchProcessor<F extends Fields = {}> {
 }
 
 
-function toRequestList(val?: string | string[]): string[] | undefined {
-    if (val == null) return undefined
-    if (!Array.isArray(val)) {
-        val = [val]
+function mapRequest<T extends BlockRange>(options: T): Omit<T, 'range'> {
+    let {range, ...req} = options
+    for (let key in req) {
+        let val = (req as any)[key]
+        if (Array.isArray(val)) {
+            (req as any)[key] = val.map(s => s.toLowerCase())
+        }
     }
-    if (val.length == 0) return undefined
-    return val.map(s => s.toLowerCase())
+    return req
 }
 
 
